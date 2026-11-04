@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LuaScriptFucker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Schibsted+Grotesk:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <nav class="side" aria-label="Tools">
+    <div class="logo">LuaScriptFucker</div>
+    <button data-v="scan" class="on">Scanner</button>
+    <button data-v="clean">Cleanup</button>
+    <button data-v="inspect">Inspect</button>
+    <button data-v="api">Use in code</button>
+    <button data-v="hist">History</button>
+    <p class="note">Everything runs in your browser. Your scripts are never uploaded.</p>
+  </nav>
+
+  <main>
+    <header><h1 id="title"></h1><p id="sub"></p></header>
+
+    <section class="card" id="inputCard">
+      <div class="cardhead"><h2>1. Add your script</h2>
+        <div class="seg" role="tablist"><button data-t="up" class="on">Upload</button><button data-t="paste">Paste code</button></div></div>
+      <div id="tUp" class="drop" tabindex="0"><p id="dropTxt">Drop a .lua or .luau file here, or click to browse</p><input type="file" id="file" accept=".lua,.luau,.txt" hidden></div>
+      <textarea id="inp" spellcheck="false" placeholder="Paste your script here" hidden></textarea>
+      <div class="row"><button id="bSample" class="ghost">Try an example</button><button id="bClear" class="ghost">Clear</button><span id="count" class="muted"></span></div>
+    </section>
+
+    <p id="msg" class="msg" role="status"></p>
+
+    <section class="view" id="v-scan">
+      <div class="stats" id="statCards"></div>
+      <div class="row"><button class="solid" id="bScan">Scan script</button><span class="muted">Reads the code without running it.</span></div>
+      <div id="scanOut"></div>
+    </section>
+
+    <section class="view" id="v-clean" hidden>
+      <div class="card opts">
+        <label><input type="checkbox" id="oChar" checked><span><b>Fold string.char</b><small>string.char(72,105) becomes "Hi"</small></span></label>
+        <label><input type="checkbox" id="oEsc" checked><span><b>Decode escapes</b><small>"\72\x69" becomes "Hi"</small></span></label>
+        <label><input type="checkbox" id="oCat" checked><span><b>Join split strings</b><small>"a".."b" becomes "ab"</small></span></label>
+        <label><input type="checkbox" id="oHex" checked><span><b>Hex to decimal</b><small>0x2A becomes 42</small></span></label>
+        <label><input type="checkbox" id="oFmt" checked><span><b>Reformat code</b><small>Line breaks and indents</small></span></label>
+      </div>
+      <div class="row"><button class="solid" id="bClean">Clean up</button><button class="ghost" id="bUse">Use result as input</button><span class="grow"></span><button class="ghost" id="bCopy">Copy</button><button class="ghost" id="bSave">Save .lua</button></div>
+      <p id="cleanStats" class="muted"></p>
+      <textarea id="out" class="outbox" readonly spellcheck="false" placeholder="The cleaned script shows up here"></textarea>
+    </section>
+
+    <section class="view" id="v-inspect" hidden>
+      <div class="row"><button class="solid" id="bInspect">Extract details</button><span class="muted">Pulls out links, text and function calls.</span></div>
+      <div id="inspectOut"></div>
+    </section>
+
+    <section class="view" id="v-api" hidden>
+      <div class="card doc">
+        <p>The tools live in <code>core.js</code>. Load it on any page, or in Node, and call them directly.</p>
+        <h3>In a web page</h3>
+<pre>&lt;script src="core.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+  const r = LuaScriptFucker.cleanup(code, { fmt: false });
+  console.log(r.code, r.stats);
+&lt;/script&gt;</pre>
+        <h3>In Node</h3>
+<pre>const { cleanup, scan, inspect } = require('./core.js');
+const report = scan(code);
+console.log(report.level, report.findings);</pre>
+        <h3>What each function returns</h3>
+        <ul>
+          <li><code>cleanup(code, options)</code> gives <code>{ code, stats }</code>. Options: <code>chr esc cat hex fmt</code>, each true or false.</li>
+          <li><code>scan(code)</code> gives <code>{ level, findings, urls }</code>. Level is <code>high</code>, <code>medium</code> or <code>none</code>.</li>
+          <li><code>inspect(code)</code> gives <code>{ strings, urls, calls }</code>, each sorted by how often it appears.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="view" id="v-hist" hidden>
+      <div class="row"><span class="muted">Saved only in this browser. The last 20 runs are kept.</span><span class="grow"></span><button class="ghost" id="bWipe">Clear history</button></div>
+      <div id="histOut"></div>
+    </section>
+  </main>
+</div>
+<script src="core.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
