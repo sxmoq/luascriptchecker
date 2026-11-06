@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LuaScriptFucker</title>
-<meta name="description" content="Dump and inspect Lua and Luau scripts: hidden layers, script-hub loaders, links and risky behavior. Runs entirely in your browser.">
+<meta name="description" content="Is this Roblox script safe? Paste a script or a link. It reads the script, follows what it downloads and tells you what it really does. Runs in your browser.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2314171f'/%3E%3Cpath d='M10 11l-4.5 5 4.5 5M22 11l4.5 5-4.5 5M18 9l-4 14' stroke='white' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
 <script>try{var t=localStorage.getItem('lsf_theme');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
 </head>
@@ -26,6 +26,7 @@
     </nav>
     <div class="railfoot">
       <p class="note">Runs in your browser. Your scripts are never uploaded. Linked scripts are downloaded to your browser so they can be checked.</p>
+      <a class="btn sm" id="railDiscord" href="#" target="_blank" rel="noopener">Join our Discord</a>
       <button id="themeBtn" class="btn sm" type="button">Switch theme</button>
     </div>
   </aside>
@@ -41,17 +42,24 @@
         <span class="muted" id="count"></span>
         <span class="grow"></span>
         <button id="bOpen" class="btn sm" type="button">Open file</button>
-        <button id="bSample" class="btn sm" type="button">Example</button>
         <button id="bClear" class="btn sm" type="button">Clear</button>
         <input type="file" id="file" accept=".lua,.luau,.txt" hidden>
       </div>
       <textarea id="inp" spellcheck="false" aria-label="Script" placeholder="Paste a script or a link to one here, or drop a .lua / .luau file on this box"></textarea>
       <div class="efoot">
-        <button class="btn solid" id="bDump" type="button">Check script</button>
+        <button class="btn solid big" id="bDump" type="button">Check script</button>
         <label class="chk"><input type="checkbox" id="autoDl" checked> Also read the scripts it downloads</label>
         <span class="muted">Nothing is ever run, only read.</span>
       </div>
     </section>
+    <div class="examples" id="examples">
+      <span>Try an example:</span>
+      <button class="chip-btn" data-ex="normal" type="button">Normal script</button>
+      <button class="chip-btn" data-ex="loader" type="button">Loader link</button>
+      <button class="chip-btn" data-ex="stealer" type="button">Stealer</button>
+      <button class="chip-btn" data-ex="hidden" type="button">Hidden stealer</button>
+      <button class="chip-btn" data-ex="luarmor" type="button">Luarmor loader</button>
+    </div>
 
     <p id="msg" class="msg" role="status"></p>
 
@@ -87,18 +95,18 @@
 <pre>&lt;script src="core.js"&gt;&lt;/script&gt;
 &lt;script&gt;
   const d = LuaScriptFucker.dump(code);
-  console.log(d.level, d.score, d.findings, d.loaders);
+  console.log(d.verdict.title, d.says, d.findings);
 &lt;/script&gt;</pre>
         <h3>In Node</h3>
 <pre>const { dump, scan, cleanup, inspect, bytecode } = require('./core.js');
-const report = dump(code);
-console.log(report.layers.length, report.obfuscation.label);</pre>
+const report = dump(code, { remote: { 'https://example.com/raw/x': 'script text' } });
+console.log(report.verdict, report.pending);</pre>
         <h3>What each function returns</h3>
         <ul>
-          <li><code>dump(code)</code> gives the full report: <code>level</code>, <code>score</code>, <code>findings</code>, <code>loaders</code> (every link, with what the script does with it), <code>layers</code> (code unpacked from inside the script), <code>obfuscation</code>, <code>strings</code>, <code>calls</code>, <code>iocs</code> and <code>meta</code>.</li>
-          <li><code>scan(code)</code> gives <code>{ level, score, findings, urls }</code>. Level is <code>high</code>, <code>medium</code> or <code>none</code>. Score is 0 to 100.</li>
+          <li><code>dump(code, { remote })</code> gives the full report: <code>verdict</code> (state, title, advice), <code>says</code> (plain sentences), <code>pending</code> (linked scripts still to read), <code>gates</code> (protected loaders), <code>findings</code>, <code>loaders</code>, <code>layers</code>, <code>obfuscation</code>, <code>strings</code>, <code>calls</code>, <code>iocs</code> and <code>meta</code>. Pass downloaded script text in <code>remote</code>, keyed by link, to have it checked too.</li>
+          <li><code>scan(code)</code> gives <code>{ level, score, findings, urls }</code>. Level is <code>high</code>, <code>medium</code> or <code>none</code>.</li>
           <li><code>cleanup(code, options)</code> gives <code>{ code, stats }</code>. Options: <code>chr esc cat hex ren b64 fmt</code>, each true or false.</li>
-          <li><code>inspect(code)</code> gives <code>{ strings, urls, calls }</code>, each sorted by how often it appears.</li>
+          <li><code>inspect(code)</code> gives <code>{ strings, urls, calls }</code>.</li>
           <li><code>bytecode(bytes)</code> takes a <code>Uint8Array</code> and gives <code>{ kind, version, size, parsed, strings }</code>.</li>
         </ul>
       </div>

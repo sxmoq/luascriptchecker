@@ -95,6 +95,21 @@
    *  Known places a script can load code from
    * ------------------------------------------------------------------ */
   var HOSTS = [
+    // well-known libraries and tools: loading these is normal
+    { re: /sirius\.menu\/rayfield|SiriusSoftwareLtd\/Rayfield/i, name: 'Rayfield', cls: 'lib' },
+    { re: /shlexware\/Orion\b/i, name: 'Orion', cls: 'lib' },
+    { re: /xHeptc\/Kavo-UI-Library/i, name: 'Kavo UI', cls: 'lib' },
+    { re: /EdgeIY\/infiniteyield/i, name: 'Infinite Yield', cls: 'lib' },
+    { re: /dawid-scripts\/Fluent/i, name: 'Fluent', cls: 'lib' },
+    { re: /(?:violin-suzutsuki|wally-rblx)\/LinoriaLib/i, name: 'Linoria', cls: 'lib' },
+    { re: /Footagesus\/WindUI/i, name: 'WindUI', cls: 'lib' },
+    { re: /infyiff\/backup\/[^\s"']*dex/i, name: 'Dex Explorer', cls: 'lib' },
+    // protected loaders and key systems: the real script is delivered after a key check
+    { re: /luarmor\.net/i, name: 'Luarmor', cls: 'gate' },
+    { re: /jnkie\.com|junkie-development/i, name: 'Jnkie', cls: 'gate' },
+    { re: /platoboost/i, name: 'Platoboost', cls: 'gate' },
+    { re: /pandadevelopment/i, name: 'Panda Development', cls: 'gate' },
+    // script hubs
     { re: /scriptblox\.com/i, name: 'ScriptBlox', cls: 'hub' },
     { re: /rscripts\.net/i, name: 'RScripts', cls: 'hub' },
     { re: /discord(?:app)?\.com\/api\/webhooks/i, name: 'Discord webhook', cls: 'exfil' },
@@ -104,9 +119,10 @@
     { re: /pastebin\.com/i, name: 'Pastebin', cls: 'paste' },
     { re: /raw\.githubusercontent\.com|gist\.githubusercontent\.com|gist\.github\.com|\/\/github\.com\/[^\/]+\/[^\/]+\/(?:blob|raw)\//i, name: 'GitHub raw file', cls: 'paste' },
     { re: /hastebin|paste\.ee|rentry\.co|pastefy|controlc\.com|ghostbin|privatebin|justpaste\.it|paste\.gg|pastes\.io/i, name: 'Paste site', cls: 'paste' },
-    { re: /ngrok|trycloudflare|\.workers\.dev|glitch\.me|repl\.co|replit\.app|herokuapp|vercel\.app|onrender\.com|loca\.lt|serveo|duckdns|no-ip|hopto\.org|netlify\.app|pages\.dev/i, name: 'Free or tunnel hosting', cls: 'tunnel' },
+    { re: /ngrok|trycloudflare|loca\.lt|serveo|duckdns|no-ip|hopto\.org|ddns\.net|zapto\.org|sytes\.net/i, name: 'Temporary tunnel server', cls: 'tunnel' },
+    { re: /\.workers\.dev|glitch\.me|repl\.co|replit\.app|herokuapp|vercel\.app|onrender\.com|netlify\.app|pages\.dev/i, name: 'Free hosting', cls: 'hosting' },
     { re: /\/\/(?:www\.)?(?:bit\.ly|tinyurl\.com|t\.co|cutt\.ly|is\.gd|rb\.gy|ow\.ly|v\.gd|tiny\.cc|shorturl\.at)\//i, name: 'Link shortener', cls: 'short' },
-    { re: /linkvertise|work\.ink|lootlabs|loot-link|platoboost|luarmor|pandadevelopment|workink/i, name: 'Key system or ad link', cls: 'key' },
+    { re: /linkvertise|work\.ink|workink|lootlabs|loot-link/i, name: 'Ad or key page', cls: 'key' },
     { re: /\/\/(?:[\w-]+\.)*(?:roblox\.com|rbxcdn\.com|robloxlabs\.com)(?:[\/:?#]|$)/i, name: 'Roblox', cls: 'roblox' }
   ];
   function classify(url) {
@@ -119,34 +135,37 @@
    *  Behavior rules.  level: 3 = serious, 2 = worth a look, 1 = good to know
    * ------------------------------------------------------------------ */
   var RULES = [
-    [3, /discord(?:app)?\.com\/api\/webhooks\/[\w\/-]+/, 'Sends data to a Discord webhook', 'Scripts that steal information often send it to a webhook like this. Only trust it if you know why it is there.'],
-    [3, /\.ROBLOSECURITY|roblosecurity/, 'Mentions the Roblox login cookie', 'That cookie is the key to your account. No normal script needs it.'],
-    [3, /\brequire\s*\(\s*\d{6,}\s*\)/, 'Loads a hidden module by asset ID', 'The real code lives somewhere else and can change at any time. This is a common backdoor trick.'],
-    [3, /grabify|iplogger|api\.ipify|ip-api|ipinfo\.io/, 'Looks up or logs your IP address', 'Tracking links and IP lookups are used to find out where you are.'],
-    [2, /\bloadstring\b/, 'Runs hidden code (loadstring)', 'loadstring runs any text it is given as a program. It is how scripts run code they download. On its own that is not bad, but you need to see what it runs.'],
-    [2, /HttpGet(?:Async)?|HttpPost(?:Async)?|\bhttp_request\b|\bsyn\.request\b|\brequest\s*\(\s*\{/, 'Talks to the internet', 'It downloads or sends data. Check the links listed in the results.'],
-    [2, /HttpGet(?:Async)?\s*\(\s*(?!["'(])[A-Za-z_]/, 'Downloads from a link built while running', 'The address is not written out in the text, so you cannot see where the code comes from by reading it.'],
-    [2, /\b(?:writefile|readfile|appendfile|delfile|makefolder|listfiles)\s*\(/, 'Reads or writes files on your PC', 'These only work in script executors and can touch files outside the game.'],
-    [2, /\bos\.execute|\bio\.popen|\bos\.getenv/, 'Runs system commands', 'This can run programs on your computer.'],
-    [2, /Prompt(?:GamePass|Product|Bundle)?Purchase\s*\(|PromptPremiumPurchase/, 'Opens Robux purchase pop-ups', 'Make sure you read what you are asked to buy before you click.'],
-    [2, /["'][A-Za-z0-9+\/=]{200,}["']/, 'Contains a very long encoded string', 'Large blocks of random-looking text usually hide more code.'],
-    [2, /RequestAsync|PostAsync|GetAsync/, 'Sends or fetches web requests (HttpService)', 'It talks to a server. Check the links listed in the results.'],
-    [2, /queue_on_teleport|queueonteleport/, 'Re-runs itself after you teleport', 'Used to stay active in the next server after you leave the current one.'],
+    // 3 = serious, 2 = worth checking, 1 = good to know (normal in many scripts, never changes the verdict)
+    [3, /discord(?:app)?\.com\/api\/webhooks\/[\w\/-]+/, 'Sends data to a Discord webhook', 'Scripts that steal information send it to a webhook like this. Even if the author calls it “just logging”, it sends details about you to them.'],
+    [2, /\.ROBLOSECURITY|roblosecurity/, 'Mentions the Roblox login cookie', 'That cookie is the key to your account. No normal script needs it.'],
+    [2, /\brequire\s*\(\s*\d{6,}\s*\)/, 'Loads a hidden module by ID', 'The real code lives on Roblox under that number and can change at any time. This is the most common backdoor trick in free models.'],
+    [3, /grabify|iplogger|2no\.co|yip\.su|blasze/, 'Uses an IP-logging link', 'Tracking links like this exist to find out where you are.'],
+    [2, /api\.ipify|ip-api|ipinfo\.io|ifconfig\.me|ipapi/, 'Looks up your IP address', 'Scripts that check your IP are often sending it somewhere. Normal scripts do not need it.'],
     [3, /(?:auth|accountsettings|billing|trades)\.roblox\.com/, 'Talks to Roblox account or trade pages', 'These addresses handle logins, settings and trades. Account stealers use them. Normal scripts do not.'],
-    [2, /(?:economy|inventory)\.roblox\.com/, 'Looks at your Robux or inventory', 'Scripts that check what you own can be looking for things to steal.'],
     [3, /Headers\s*=\s*\{[^}]*Cookie/, 'Sends a login cookie with a web request', 'A cookie proves who you are. Sending one to a website can hand over your account.'],
-    [2, /\b(?:mailbox|MailboxService|SendMail|GiftAll|TradeAll|TradeRequest|SendTrade)\b/, 'Touches mailbox or trading', 'Item stealers use these to send your things to another player. That is normal in trading games and odd anywhere else.'],
-    [1, /:Shutdown\s*\(/, 'Can close the game', 'It can shut down the server or your game window.'],
-    [2, /GetObjects\s*\(/, 'Loads a model by asset ID', 'Models can carry extra scripts that are not shown in this file.'],
+    [2, /(?:economy|inventory)\.roblox\.com/, 'Looks at your Robux or inventory', 'Scripts that check what you own can be looking for things to steal.'],
+    [2, /\b(?:SendMail|GiftAll|TradeAll|SendTrade|MailboxService)\b/, 'Touches mailbox or trading', 'Item stealers use these to send your things to another player.'],
+    [2, /\bos\.execute|\bio\.popen|\bos\.getenv/, 'Runs system commands', 'This can run programs on your computer. Roblox scripts have no reason to.'],
+    [2, /HttpGet(?:Async)?\s*\(\s*(?:["'][^"'\n]*["']\s*\.\.\s*[A-Za-z_]|(?!["'(])[A-Za-z_])/, 'Downloads from a link built while running', 'The address is not written out in the text, so you cannot see where the code comes from by reading it.'],
+    [1, /\bloadstring\b/, 'Runs code from text (loadstring)', 'Normal in many scripts. It runs text as a program, so what matters is where that text comes from.'],
+    [1, /HttpGet(?:Async)?|HttpPost(?:Async)?|\bhttp_request\b|\bsyn\.request\b|\brequest\s*\(\s*\{/, 'Uses the internet', 'It downloads or sends data. The links are listed below.'],
+    [1, /RequestAsync|PostAsync|GetAsync/, 'Makes web requests (HttpService)', 'It talks to a server. The links are listed below.'],
+    [1, /\b(?:writefile|readfile|appendfile|delfile|makefolder|listfiles)\s*\(/, 'Saves or reads files', 'Usually used to save settings. Only a concern if it also sends data out.'],
+    [1, /Prompt(?:GamePass|Product|Bundle)?Purchase\s*\(|PromptPremiumPurchase/, 'Opens Robux purchase pop-ups', 'Read what you are asked to buy before you click.'],
+    [1, /["'][A-Za-z0-9+\/=]{200,}["']/, 'Contains a very long encoded string', 'Big blocks of random-looking text often hide more code.'],
+    [1, /queue_on_teleport|queueonteleport/, 'Re-runs itself after you teleport', 'Keeps the script active in the next server.'],
+    [1, /GetObjects\s*\(/, 'Loads a model by asset ID', 'Models can carry extra scripts. Common for loading menus.'],
+    [1, /\bscript_key\b/, 'Uses a script key', 'Protected scripts ask for a key this way. The key itself is not a danger.'],
     [1, /\b(?:getfenv\(\s*\d*\s*\)|_G|_ENV|getgenv\(\s*\))\s*\[\s*["'][A-Za-z_]+["']\s*\]/, 'Looks up functions by name', 'Calling functions through a text name is a common way to hide what a script uses.'],
-    [1, /\bgetgenv\b/, 'Uses the executor global table', 'Only exists in script executors, so the script is meant for exploiting tools.'],
-    [1, /\b(?:getfenv|setfenv|getrawmetatable|setrawmetatable|hookfunction|hookmetamethod|newcclosure|checkcaller|getgc|getupvalues?)\b/, 'Uses advanced executor functions', 'Normal in exploits and anti-cheat tools, rare anywhere else.'],
+    [1, /\bgetgenv\b/, 'Uses the executor global table', 'Only exists in script executors, so this script is made for an executor. Very common.'],
+    [1, /\b(?:getfenv|setfenv|getrawmetatable|setrawmetatable|hookfunction|hookmetamethod|newcclosure|checkcaller|getgc|getupvalues?)\b/, 'Uses advanced executor functions', 'Normal in exploit scripts and anti-cheat tools, rare anywhere else.'],
     [1, /identifyexecutor|getexecutorname/, 'Checks which executor you use', 'Some scripts change behavior, or log this, depending on your executor.'],
-    [1, /\bfiresignal\b|\bfireclickdetector\b|\bfiretouchinterest\b|\bfireproximityprompt\b/, 'Triggers game events directly', 'Common in auto-farm and exploit scripts.'],
-    [1, /\b(?:setclipboard|toclipboard)\s*\(/, 'Copies text to your clipboard', 'Check what it copies before you paste anything.'],
+    [1, /\bfiresignal\b|\bfireclickdetector\b|\bfiretouchinterest\b|\bfireproximityprompt\b/, 'Triggers game events directly', 'Common in auto-farm scripts.'],
+    [1, /\b(?:setclipboard|toclipboard)\s*\(/, 'Copies text to your clipboard', 'Check what it copies before you paste it anywhere.'],
     [1, /TeleportService|:Teleport(?:ToPlaceInstance)?\s*\(/, 'Can teleport you to another game', 'It may move you out of the game you are in.'],
-    [1, /:Kick\s*\(/, 'Can kick players', 'Fine for admin tools, unexpected in anything else.'],
-    [1, /\bbase64|b64decode|fromBase64/i, 'Decodes Base64 text', 'Often used to hide what a script really does.']
+    [1, /:Kick\s*\(/, 'Can kick players', 'Fine for admin tools.'],
+    [1, /:Shutdown\s*\(/, 'Can close the game', 'It can shut down the server or your game window.'],
+    [1, /\bbase64|b64decode|fromBase64/i, 'Decodes Base64 text', 'Sometimes used to hide what a script really does.']
   ];
 
   /* ------------------------------------------------------------------ *
@@ -161,7 +180,6 @@
     ['Hercules', /hercules\s+obfuscator/i],
     ['Synapse Xen', /synapse\s*xen|\bxen\s+obfuscator/i],
     ['PSU', /psu\.dev|\bPSU\s+(?:obfuscator|protect)/i],
-    ['Jnkie', /jnkie/i],
     ['Marked as obfuscated', /obfuscated\s+(?:by|with|using)|protected\s+(?:by|using|with)/i]
   ];
 
@@ -271,7 +289,14 @@
 
   var ROLE_RANK = { send: 0, run: 1, fetch: 2, mention: 3 };
   var MAXL = 25;
-  var NEVER_FETCH = { exfil: 1, tracker: 1, short: 1, key: 1, invite: 1, roblox: 1, file: 1 };
+  var NEVER_FETCH = { exfil: 1, tracker: 1, short: 1, key: 1, invite: 1, roblox: 1, file: 1, gate: 1, lib: 1 };
+  // Protected-loader services can also be recognised by their code, not only by a link.
+  var GATE_TEXT = [
+    ['Luarmor', /luarmor|\bapi\.load_script\b|\bapi\.script_id\b/i],
+    ['Jnkie', /jnkie|junkie-development/i],
+    ['Platoboost', /platoboost/i]
+  ];
+  var EXEC_RULES = ['Uses the executor global table', 'Uses advanced executor functions', 'Triggers game events directly', 'Checks which executor you use'];
 
   // Turn a link to a script's web page into the link of its raw text, when we know how.
   function toRaw(u) {
@@ -285,7 +310,7 @@
   // Every link in a piece of code, with what the script does with it.
   function urlsIn(d, bare) {
     var out = [], re = /https?:\/\/[^\s"'<>)\]\\]+/g, m;
-    var dynRun = /\bloadstring\b/.test(d) && /HttpGet(?:Async)?\s*\(\s*(?!["'(])[A-Za-z_]/.test(d);
+    var dynRun = /\bloadstring\b/.test(d) && /HttpGet(?:Async)?\s*\(\s*(?:["'][^"'\n]*["']\s*\.\.\s*[A-Za-z_]|(?!["'(])[A-Za-z_])/.test(d);
     while ((m = re.exec(d))) {
       var url = m[0].replace(/[.,;]+$/, ''), w = d.slice(Math.max(0, m.index - 200), m.index).split(/[;\n]/).pop(), role = 'mention';
       if (/HttpPost|PostAsync|["']POST["']/i.test(w)) role = 'send';
@@ -294,7 +319,7 @@
       var h = classify(url);
       if (h.cls === 'exfil') role = 'send';
       // the link sits in a variable that is later passed to HttpGet and loadstring
-      if (role === 'mention' && dynRun && /^(?:hub|paste|tunnel|other)$/.test(h.cls)) role = 'run';
+      if (role === 'mention' && dynRun && /^(?:hub|paste|tunnel|hosting|other|gate)$/.test(h.cls)) role = 'run';
       // the whole input is just a link
       if (bare && out.length === 0 && role === 'mention') role = 'fetch';
       out.push({ url: url, role: role, index: m.index, host: h });
@@ -302,7 +327,7 @@
     return out;
   }
 
-  var GENERIC = /^(?:Runs hidden code|Talks to the internet|Sends data to a Discord webhook|Sends or fetches web requests|Loads a script from|Loads from a paste|Downloads from a link built|Hidden behavior|Script is obfuscated)/;
+  var GENERIC = /^(?:Hidden behavior|Script is obfuscated|Downloads from a link built|Sends data to a Discord webhook|Loads a script from|Loads from a paste|Loads a hidden module|Protected loader)/;
 
   function dump(src, opts) {
     opts = opts || {};
@@ -368,91 +393,126 @@
     });
 
     var ldList = Object.keys(loaders).map(function (k) { return loaders[k]; });
-    ldList.forEach(function (l) { l.resolved = !!resolvedKeys[toRaw(l.url)]; });
+    ldList.forEach(function (l) { l.resolved = !!resolvedKeys[toRaw(l.url)]; l.known = l.cls === 'lib'; l.gated = l.cls === 'gate'; });
 
+    // Protected loaders (Luarmor, Jnkie, ...): recognised by link or by their code.
+    var gates = {};
+    ldList.forEach(function (l) { if (l.gated && !gates[l.name]) gates[l.name] = { service: l.name, url: l.url, layer: l.layer, line: l.line }; });
+    GATE_TEXT.forEach(function (g) {
+      if (gates[g[0]]) return;
+      for (var k = 0; k < cleanedLayers.length; k++) if (g[1].test(blankComments(cleanedLayers[k]))) { gates[g[0]] = { service: g[0], url: '', layer: k, line: 1 }; return; }
+    });
+    var gateList = Object.keys(gates).map(function (k) { return gates[k]; });
+
+    function M(t) { return merged[t]; }
     function addF(level, title, why, ld) {
       if (merged[title]) { merged[title].count += ld.count; return; }
       merged[title] = { level: level, title: title, why: why, count: ld.count, line: ld.line, layer: ld.layer, via: layers[ld.layer].via, snippet: ld.url };
     }
     ldList.forEach(function (ld) {
-      if (ld.cls === 'hub') addF(ld.role === 'run' || ld.role === 'fetch' ? 2 : 1, 'Loads a script from ' + ld.name,
+      if (ld.cls === 'hub') addF(1, 'Loads a script from ' + ld.name,
         'The real code lives on a public script hub, and its author can change it at any time. What is safe today may not be safe tomorrow.', ld);
-      else if (ld.cls === 'paste') addF(2, 'Loads from a paste or raw-file site (' + ld.name + ')',
+      else if (ld.cls === 'paste') addF(1, 'Loads from a paste or raw-file site (' + ld.name + ')',
         'Code fetched from here can be swapped out at any time, so what you see today may not be what runs tomorrow.', ld);
-      else if (ld.cls === 'tunnel') addF(2, 'Talks to a temporary or free-hosting server',
-        'Throwaway hosts are often used for stealers and tracking because they are cheap to create and abandon.', ld);
+      else if (ld.cls === 'tunnel') addF(2, 'Talks to a temporary tunnel server',
+        'Tunnels like ngrok are cheap throwaway servers. They are often used for stealers and tracking.', ld);
+      else if (ld.cls === 'hosting') addF(1, 'Talks to a free-hosting site',
+        'Free hosting is used by honest hobby projects and by throwaway scams. The link alone does not tell which.', ld);
       else if (ld.cls === 'short') addF(2, 'Uses a shortened link',
         'A shortened link hides the real destination. Open it carefully before trusting it.', ld);
       else if (ld.cls === 'key') addF(1, 'Key system or ad link',
         'The script sends you through a key or ad page. That page, not this script, decides what gets loaded next.', ld);
       else if (ld.cls === 'invite') addF(1, 'Discord invite', 'Just a community link, but check it matches who published the script.', ld);
-      else if (ld.cls !== 'roblox' && /r[o0]b[l1I][o0]x/i.test(ld.host))
-        addF(3, 'Link pretends to be Roblox', 'The address looks like Roblox but is not. Fake Roblox pages are used to steal logins.', ld);
+      else if (ld.cls === 'other' && /r[o0]b[l1I][o0x]x|rblx/i.test(ld.host)) {
+        if (/login|log-in|verify|auth|account|secure|free-?robux|robux|trade|reward|gift/i.test(ld.host))
+          addF(3, 'Link pretends to be Roblox', 'The address looks like Roblox but is not. Fake Roblox pages are used to steal logins.', ld);
+        else addF(1, 'Link has “Roblox” in its name but is not Roblox', 'Plenty of script sites do this. Just don’t type your Roblox login into it.', ld);
+      }
     });
-    var hasHook = !!merged['Sends data to a Discord webhook'];
-    if (hasHook && cleanedLayers.some(function (c) { return /UserId|DisplayName|AccountAge|MembershipType|GetRobuxBalance|LocalPlayer/.test(c); }))
+    gateList.forEach(function (g) {
+      merged['Protected loader (' + g.service + ')'] = { level: 1, title: 'Protected loader (' + g.service + ')',
+        why: g.service + ' hands out the real script only after a key check, so nobody can read it from outside. Many paid and key hubs do this on purpose. It is not a sign of a virus, and it does not prove the script is safe.',
+        count: 1, line: g.line, layer: g.layer, via: layers[g.layer].via, snippet: g.url };
+    });
+
+    // Rules that only matter in combination
+    var sends = M('Sends data to a Discord webhook') || ldList.some(function (l) { return l.role === 'send'; });
+    var net = M('Uses the internet') || M('Makes web requests (HttpService)') || M('Sends data to a Discord webhook');
+    if (M('Mentions the Roblox login cookie') && net) { var ck = M('Mentions the Roblox login cookie'); ck.level = 3; ck.why = 'That cookie is the key to your account, and this script also talks to the internet. Together that is how account stealers work.'; }
+    if (M('Saves or reads files') && sends) merged['Reads files and sends data out'] = { level: 2, title: 'Reads files and sends data out', why: 'It can read files on your PC and it also sends data to a server. Check what it reads.', count: 1, line: M('Saves or reads files').line, layer: M('Saves or reads files').layer, via: M('Saves or reads files').via, snippet: '' };
+    if (M('Opens Robux purchase pop-ups') && (M('Uses the executor global table') || M('Uses advanced executor functions'))) { var pp = M('Opens Robux purchase pop-ups'); pp.level = 2; pp.why = 'A script run from an executor has no business opening purchase pop-ups. Read what you are asked to buy before you click.'; }
+    if (M('Sends data to a Discord webhook') && cleanedLayers.some(function (c) { return /UserId|DisplayName|AccountAge|MembershipType|GetRobuxBalance|LocalPlayer/.test(c); }))
       merged['Collects player info and sends it out'] = { level: 3, title: 'Collects player info and sends it out',
-        why: 'The script reads details about your account or character and also contains a webhook. That combination is how most account loggers work.', count: 1, line: merged['Sends data to a Discord webhook'].line, layer: merged['Sends data to a Discord webhook'].layer, via: merged['Sends data to a Discord webhook'].via, snippet: '' };
+        why: 'The script reads details about your account or character and also contains a webhook. That combination is how most account loggers work.', count: 1, line: M('Sends data to a Discord webhook').line, layer: M('Sends data to a Discord webhook').layer, via: M('Sends data to a Discord webhook').via, snippet: '' };
 
     var obf = obfuscation(raw);
     var innerLayers = layers.filter(function (l) { return !l.url && l.depth > 0; }).length;
     if (innerLayers) { obf.score = Math.min(100, obf.score + 10); obf.signals.push(innerLayers + ' hidden layer' + (innerLayers > 1 ? 's' : '') + ' unpacked from inside the script'); }
-    var readableUrls = ldList.filter(function (l) { return l.cls !== 'roblox'; }).length;
-    if (obf.score >= 40 && !readableUrls && !Object.keys(merged).some(function (k) { return merged[k].level >= 2; }))
-      merged['Hidden behavior'] = { level: 2, title: 'Hidden behavior', why: 'The script is heavily scrambled and nothing readable came out of it. A text check cannot see what it does, so treat it as unknown.', count: 1, line: 1, layer: 0, via: layers[0].via, snippet: '' };
-    else if (obf.score >= 15 && obf.score < 40) merged['Script is obfuscated'] = { level: 1, title: 'Script is obfuscated', why: 'It is written to be hard to read. Check the unpacked layers and the text it contains.', count: 1, line: 1, layer: 0, via: layers[0].via, snippet: '' };
-    else if (obf.score >= 40 && merged['Hidden behavior'] === undefined) merged['Script is obfuscated'] = { level: 1, title: 'Script is obfuscated (' + obf.label.toLowerCase() + ')', why: 'It is written to be hard to read. The checks still ran on everything that could be decoded.', count: 1, line: 1, layer: 0, via: layers[0].via, snippet: '' };
+    var anyHigh = Object.keys(merged).some(function (k) { return merged[k].level >= 3; });
+    if (obf.score >= 40 && !anyHigh)
+      merged['Hidden behavior'] = { level: 2, title: 'Hidden behavior', why: 'The script is scrambled so well that we cannot see what it does. Paid hubs do this to stop copying, and so do stealers. A text check cannot tell which.', count: 1, line: 1, layer: 0, via: layers[0].via, snippet: '' };
+    else if (obf.score >= 15) merged['Script is obfuscated'] = { level: 1, title: 'Script is obfuscated', why: 'It is written to be hard to read. We still checked everything that could be decoded.', count: 1, line: 1, layer: 0, via: layers[0].via, snippet: '' };
 
     // Which loaders still point at code we have not read?
     var pending = [], pk = {};
     ldList.forEach(function (l) {
-      if (l.resolved) return;
+      if (l.resolved || l.gated || l.known) return;
       var needs = l.role === 'run' || (l.role === 'fetch' && (l.cls === 'hub' || l.cls === 'paste' || bare));
       var key = toRaw(l.url);
       if (!needs || pk[key]) return; pk[key] = 1;
       pending.push({ url: l.url, fetchUrl: key, name: l.name, cls: l.cls, role: l.role, layer: l.layer,
         blocked: !!NEVER_FETCH[l.cls], auto: l.cls === 'hub' || l.cls === 'paste' });
     });
-    var dynamic = !!merged['Downloads from a link built while running'];
-    var resolvedCount = ldList.filter(function (l) { return l.resolved; }).length;
-    // Once the loaded code has been read, "it loads other code" is no longer a mystery.
-    if (!pending.length && !dynamic && resolvedCount) {
-      Object.keys(merged).forEach(function (k) { if (/^(?:Runs hidden code|Talks to the internet|Loads a script from)/.test(k) && merged[k].level === 2) merged[k].level = 1; });
-    }
+    var dynamic = !!M('Downloads from a link built while running');
+    var hiddenMod = !!M('Loads a hidden module by ID');
+    var hiddenObf = !!M('Hidden behavior');
 
     var f = Object.keys(merged).map(function (k) { return merged[k]; }).sort(function (a, b) { return b.level - a.level || a.layer - b.layer; });
-    var top = f.length ? f[0].level : 0;
-    var score = Math.min(100, f.reduce(function (a, x) { return a + ({ 3: 40, 2: 15, 1: 4 }[x.level]); }, 0));
+    var n3 = 0, n2 = 0, n1 = 0; f.forEach(function (x) { if (x.level === 3) n3++; else if (x.level === 2) n2++; else n1++; });
+    var score = Math.min(100, n3 * 40 + n2 * 15 + Math.min(10, n1 * 2));
+    var top = n3 ? 3 : n2 ? 2 : n1 ? 1 : 0;
     var level = top === 3 ? 'high' : top === 2 ? 'medium' : 'none';
+    var gnames = gateList.map(function (g) { return g.service; }).join(' and ');
 
     var verdict;
-    if (level === 'high') verdict = { state: 'bad', title: 'Don’t run this script',
+    if (level === 'high') verdict = { state: 'bad', kind: 'bad', title: 'Don’t run this script',
       advice: 'It does things that account stealers and loggers do. If you already ran it, change your Roblox password and log out of all devices.' };
-    else if (pending.length || dynamic || merged['Hidden behavior']) verdict = { state: 'unknown', title: 'Can’t tell yet',
-      advice: pending.length ? 'This script mostly loads other code, and we have not read that code. The real script is behind the link, not in this file. Download it below, or paste what the link returns, and we will check it too.'
+    else if (pending.length || dynamic || hiddenMod || hiddenObf) {
+      var adv = pending.length ? 'This script mostly loads other code, and we have not read that code. The real script is behind the link, not in this file. Download it below, or paste what the link returns, and we will check it too.'
         : dynamic ? 'This script builds its download link while it runs, so we can’t see where its code comes from. Don’t run it unless you trust who made it.'
-        : 'This script is scrambled so well that nothing readable came out. We can’t say what it does. Don’t run it unless you trust who made it.' };
-    else if (level === 'medium') verdict = { state: 'warn', title: 'Be careful',
-      advice: 'It does things worth a second look. Only run it if you trust who made it.' };
-    else verdict = { state: 'ok', title: 'No warning signs found',
+        : hiddenMod ? 'This script loads a hidden module by number. We can’t read it from here. Free models that do this are a common backdoor, so only use it if you trust the maker.'
+        : 'This script is scrambled so well that nothing readable came out. Paid hubs do this to stop copying, and so do stealers. Only run it if you trust who made it.';
+      if (gateList.length) adv += ' It is also protected by ' + gnames + '.';
+      verdict = { state: 'unknown', kind: pending.length ? 'pending' : dynamic ? 'dynamic' : 'hidden', title: pending.length || dynamic ? 'Can’t tell yet' : 'Can’t see inside', advice: adv };
+    }
+    else if (gateList.length) verdict = { state: 'unknown', kind: 'protected', title: 'Protected script',
+      advice: 'This script is protected by ' + gnames + '. Its real code is sent to you privately after a key check, so no website can read it. That is normal for paid and key hubs, and it is not a sign of a virus. It does mean we can’t vouch for it. Only use it if you trust who made it, and try it on an alt account first, never your main.' };
+    else if (level === 'medium') verdict = { state: 'warn', kind: 'warn', title: 'Be careful',
+      advice: 'It does things worth a second look. The details below explain each one. Only run it if you trust who made it.' };
+    else verdict = { state: 'ok', kind: 'ok', title: 'No warning signs found',
       advice: 'We found nothing suspicious in everything we could read. No check is perfect, so only run scripts from people you trust.' };
 
     // Plain-English list of what the script does
     var says = [], sk = {};
-    function nm(l) { return l.cls === 'hub' || l.cls === 'paste' ? l.name : l.host; }
-    function say(t) { if (!sk[t]) { sk[t] = 1; says.push(t); } }
+    function say(kind, t) { if (!sk[t]) { sk[t] = 1; says.push({ kind: kind, text: t }); } }
+    function nm(l) { return l.cls === 'hub' || l.cls === 'paste' || l.cls === 'gate' || l.cls === 'lib' ? l.name : l.host; }
     ldList.forEach(function (l) {
-      if (l.role === 'run') say('Downloads code from ' + nm(l) + ' and runs it. ' + (l.resolved ? 'We read that code too.' : 'We have not read that code yet.'));
-      else if (l.role === 'fetch' && (l.cls === 'hub' || l.cls === 'paste' || bare)) say(bare ? 'This is a link to a script on ' + nm(l) + '. ' + (l.resolved ? 'We read it.' : 'We have not read it yet.')
+      if (l.cls === 'lib') say('check', 'Loads ' + l.name + ', a well-known script that many people use.');
+      else if (l.gated) say('lock', 'Gets its real code from ' + l.name + ', a protection and key service. That code can’t be read from outside.');
+      else if (l.role === 'run') say('down', 'Downloads code from ' + nm(l) + ' and runs it. ' + (l.resolved ? 'We read that code too.' : 'We have not read that code yet.'));
+      else if (l.role === 'fetch' && (l.cls === 'hub' || l.cls === 'paste' || bare)) say('down', bare ? 'This is a link to a script on ' + nm(l) + '. ' + (l.resolved ? 'We read it.' : 'We have not read it yet.')
         : 'Downloads a script from ' + nm(l) + '. ' + (l.resolved ? 'We read it too.' : 'We have not read it yet.'));
-      else if (l.role === 'send') say('Sends data to ' + (l.cls === 'exfil' ? 'a Discord webhook' : nm(l)) + '.');
+      else if (l.role === 'send') say('up', 'Sends data to ' + (l.cls === 'exfil' ? 'a Discord webhook' : nm(l)) + '.');
     });
-    if (dynamic) say('Downloads code from a link it builds while running, so we can’t see where from.');
-    if (innerLayers) say('Hides code inside itself and runs it. We unpacked it and checked it.');
-    f.forEach(function (x) { if (x.level >= 2 && !GENERIC.test(x.title)) say(x.title + '.'); });
-    if (obf.score >= 40) say('Is scrambled on purpose so you can’t read it.');
-    else if (obf.score >= 15) say('Is partly scrambled to make it harder to read.');
-    if (!says.length) say('Nothing unusual in the text we could read.');
+    gateList.forEach(function (g) { if (!g.url) say('lock', 'Is protected by ' + g.service + '. The real code can’t be read from outside.'); });
+    if (dynamic) say('hidden', 'Downloads code from a link it builds while running, so we can’t see where from.');
+    if (hiddenMod) say('hidden', 'Loads a hidden module by number. We can’t read it.');
+    if (innerLayers) say('hidden', 'Hides code inside itself and runs it. We unpacked it and checked it.');
+    f.forEach(function (x) { if (x.level >= 2 && !GENERIC.test(x.title)) say('warn', x.title + '.'); });
+    if (obf.score >= 40) say('hidden', 'Is scrambled on purpose so you can’t read it.');
+    else if (obf.score >= 15) say('hidden', 'Is partly scrambled to make it harder to read.');
+    if (EXEC_RULES.some(function (t) { return M(t); })) say('info', 'Needs a script executor to run. It uses functions that only exist there.');
+    if (!says.length) say('check', 'Nothing unusual in the text we could read.');
 
     var callList = Object.keys(calls).map(function (k) { return { text: k, count: calls[k], cat: callCat(k) }; }).sort(function (a, b) { return b.count - a.count; });
     var strList = Object.keys(strings).map(function (k) { return strings[k]; }).sort(function (a, b) { return (b.hidden - a.hidden) || (b.count - a.count); });
@@ -463,7 +523,7 @@
       return { depth: ly.depth, via: ly.via, url: ly.url || null, size: ly.code.length, lines: ly.code.split('\n').length, code: view };
     });
     return {
-      level: level, score: score, verdict: verdict, says: says, pending: pending, findings: f,
+      level: level, score: score, verdict: verdict, says: says, pending: pending, gates: gateList, findings: f,
       urls: tally(ldList.map(function (l) { return l.url; })),
       loaders: ldList, obfuscation: obf, layers: out, strings: strList, calls: callList, catLabels: CAT_LABEL,
       iocs: { webhooks: ldList.filter(function (l) { return l.cls === 'exfil'; }), ips: Object.keys(ips),
