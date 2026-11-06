@@ -25,7 +25,7 @@
       <button data-v="give"><svg viewBox="0 0 24 24"><path d="M12 20s-7-4.5-7-10a4 4 0 017-2.5A4 4 0 0119 10c0 5.5-7 10-7 10z"/></svg><span>Contribute</span></button>
     </nav>
     <div class="railfoot">
-      <p class="note">Runs in your browser. Your scripts are never uploaded.</p>
+      <p class="note">Runs in your browser. Your scripts are never uploaded. Linked scripts are downloaded to your browser so they can be checked.</p>
       <button id="themeBtn" class="btn sm" type="button">Switch theme</button>
     </div>
   </aside>
@@ -45,10 +45,11 @@
         <button id="bClear" class="btn sm" type="button">Clear</button>
         <input type="file" id="file" accept=".lua,.luau,.txt" hidden>
       </div>
-      <textarea id="inp" spellcheck="false" aria-label="Script" placeholder="Paste a script here, or drop a .lua / .luau file anywhere on this box"></textarea>
+      <textarea id="inp" spellcheck="false" aria-label="Script" placeholder="Paste a script or a link to one here, or drop a .lua / .luau file on this box"></textarea>
       <div class="efoot">
-        <button class="btn solid" id="bDump" type="button">Dump script</button>
-        <span class="muted">Reads the text only. Nothing is run.</span>
+        <button class="btn solid" id="bDump" type="button">Check script</button>
+        <label class="chk"><input type="checkbox" id="autoDl" checked> Also read the scripts it downloads</label>
+        <span class="muted">Nothing is ever run, only read.</span>
       </div>
     </section>
 

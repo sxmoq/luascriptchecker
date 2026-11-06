@@ -102,7 +102,7 @@
     { re: /cdn\.discordapp\.com|media\.discordapp\.net/i, name: 'Discord file', cls: 'file' },
     { re: /grabify|iplogger|2no\.co|yip\.su|blasze|api\.ipify|ip-api|ipinfo\.io|ifconfig\.me|ipapi/i, name: 'IP logger or lookup', cls: 'tracker' },
     { re: /pastebin\.com/i, name: 'Pastebin', cls: 'paste' },
-    { re: /raw\.githubusercontent\.com|gist\.githubusercontent\.com|gist\.github\.com/i, name: 'GitHub raw file', cls: 'paste' },
+    { re: /raw\.githubusercontent\.com|gist\.githubusercontent\.com|gist\.github\.com|\/\/github\.com\/[^\/]+\/[^\/]+\/(?:blob|raw)\//i, name: 'GitHub raw file', cls: 'paste' },
     { re: /hastebin|paste\.ee|rentry\.co|pastefy|controlc\.com|ghostbin|privatebin|justpaste\.it|paste\.gg|pastes\.io/i, name: 'Paste site', cls: 'paste' },
     { re: /ngrok|trycloudflare|\.workers\.dev|glitch\.me|repl\.co|replit\.app|herokuapp|vercel\.app|onrender\.com|loca\.lt|serveo|duckdns|no-ip|hopto\.org|netlify\.app|pages\.dev/i, name: 'Free or tunnel hosting', cls: 'tunnel' },
     { re: /\/\/(?:www\.)?(?:bit\.ly|tinyurl\.com|t\.co|cutt\.ly|is\.gd|rb\.gy|ow\.ly|v\.gd|tiny\.cc|shorturl\.at)\//i, name: 'Link shortener', cls: 'short' },
@@ -123,7 +123,7 @@
     [3, /\.ROBLOSECURITY|roblosecurity/, 'Mentions the Roblox login cookie', 'That cookie is the key to your account. No normal script needs it.'],
     [3, /\brequire\s*\(\s*\d{6,}\s*\)/, 'Loads a hidden module by asset ID', 'The real code lives somewhere else and can change at any time. This is a common backdoor trick.'],
     [3, /grabify|iplogger|api\.ipify|ip-api|ipinfo\.io/, 'Looks up or logs your IP address', 'Tracking links and IP lookups are used to find out where you are.'],
-    [2, /\bloadstring\b/, 'Runs code from text (loadstring)', 'The script can build and run code you cannot see here, for example code it downloads.'],
+    [2, /\bloadstring\b/, 'Runs hidden code (loadstring)', 'loadstring runs any text it is given as a program. It is how scripts run code they download. On its own that is not bad, but you need to see what it runs.'],
     [2, /HttpGet(?:Async)?|HttpPost(?:Async)?|\bhttp_request\b|\bsyn\.request\b|\brequest\s*\(\s*\{/, 'Talks to the internet', 'It downloads or sends data. Check the links listed in the results.'],
     [2, /HttpGet(?:Async)?\s*\(\s*(?!["'(])[A-Za-z_]/, 'Downloads from a link built while running', 'The address is not written out in the text, so you cannot see where the code comes from by reading it.'],
     [2, /\b(?:writefile|readfile|appendfile|delfile|makefolder|listfiles)\s*\(/, 'Reads or writes files on your PC', 'These only work in script executors and can touch files outside the game.'],
@@ -132,6 +132,11 @@
     [2, /["'][A-Za-z0-9+\/=]{200,}["']/, 'Contains a very long encoded string', 'Large blocks of random-looking text usually hide more code.'],
     [2, /RequestAsync|PostAsync|GetAsync/, 'Sends or fetches web requests (HttpService)', 'It talks to a server. Check the links listed in the results.'],
     [2, /queue_on_teleport|queueonteleport/, 'Re-runs itself after you teleport', 'Used to stay active in the next server after you leave the current one.'],
+    [3, /(?:auth|accountsettings|billing|trades)\.roblox\.com/, 'Talks to Roblox account or trade pages', 'These addresses handle logins, settings and trades. Account stealers use them. Normal scripts do not.'],
+    [2, /(?:economy|inventory)\.roblox\.com/, 'Looks at your Robux or inventory', 'Scripts that check what you own can be looking for things to steal.'],
+    [3, /Headers\s*=\s*\{[^}]*Cookie/, 'Sends a login cookie with a web request', 'A cookie proves who you are. Sending one to a website can hand over your account.'],
+    [2, /\b(?:mailbox|MailboxService|SendMail|GiftAll|TradeAll|TradeRequest|SendTrade)\b/, 'Touches mailbox or trading', 'Item stealers use these to send your things to another player. That is normal in trading games and odd anywhere else.'],
+    [1, /:Shutdown\s*\(/, 'Can close the game', 'It can shut down the server or your game window.'],
     [2, /GetObjects\s*\(/, 'Loads a model by asset ID', 'Models can carry extra scripts that are not shown in this file.'],
     [1, /\b(?:getfenv\(\s*\d*\s*\)|_G|_ENV|getgenv\(\s*\))\s*\[\s*["'][A-Za-z_]+["']\s*\]/, 'Looks up functions by name', 'Calling functions through a text name is a common way to hide what a script uses.'],
     [1, /\bgetgenv\b/, 'Uses the executor global table', 'Only exists in script executors, so the script is meant for exploiting tools.'],
@@ -220,7 +225,7 @@
   }
   var LS = /\b(?:loadstring|load)\s*\(\s*(?:\(\s*)?("(?:[^"\\\n]|\\[\s\S])*"|'(?:[^'\\\n]|\\[\s\S])*'|\[(=*)\[[\s\S]*?\]\2\])/g;
   function peel(code, depth, out, seen) {
-    if (depth >= 4 || out.length >= 12) return;
+    if (depth >= 6 || out.length >= 25) return;
     var cl = cleanup(code, { fmt: false }).code, found = [], m;
     LS.lastIndex = 0;
     while ((m = LS.exec(cl)) && found.length < 40) found.push({ via: 'loadstring', text: fromBytes(unquote(m[1])) });
@@ -234,7 +239,7 @@
       }
     });
     found.forEach(function (f) {
-      if (out.length >= 12 || !looksLikeCode(f.text)) return;
+      if (out.length >= 25 || !looksLikeCode(f.text)) return;
       var key = f.text.length + ':' + f.text.slice(0, 120);
       if (seen[key]) return; seen[key] = 1;
       out.push({ depth: depth + 1, via: f.via, code: f.text });
@@ -265,17 +270,68 @@
   function callCat(n) { for (var i = 0; i < CALLCATS.length; i++) if (CALLCATS[i][1].test(n)) return CALLCATS[i][0]; return 'other'; }
 
   var ROLE_RANK = { send: 0, run: 1, fetch: 2, mention: 3 };
+  var MAXL = 25;
+  var NEVER_FETCH = { exfil: 1, tracker: 1, short: 1, key: 1, invite: 1, roblox: 1, file: 1 };
 
-  function dump(src) {
-    var raw = String(src), layers = [{ depth: 0, via: 'Original script', code: raw }];
-    peel(raw, 0, layers, {});
-    var merged = {}, loaders = {}, strings = {}, calls = {}, ips = {}, assets = {}, webhooks = {};
+  // Turn a link to a script's web page into the link of its raw text, when we know how.
+  function toRaw(u) {
+    var m;
+    if ((m = /^(https?:\/\/(?:www\.)?(?:scriptblox\.com|rscripts\.net))\/script\/([^\/?#]+)/i.exec(u))) return m[1] + '/raw/' + m[2];
+    if ((m = /^https?:\/\/(?:www\.)?pastebin\.com\/(?!raw\/)([A-Za-z0-9]{6,})(?:[?#].*)?$/i.exec(u))) return 'https://pastebin.com/raw/' + m[1];
+    if ((m = /^https?:\/\/github\.com\/([^\/]+)\/([^\/]+)\/blob\/([^\/]+)\/(.+?)(?:[?#].*)?$/i.exec(u))) return 'https://raw.githubusercontent.com/' + m[1] + '/' + m[2] + '/' + m[3] + '/' + m[4];
+    return u;
+  }
+
+  // Every link in a piece of code, with what the script does with it.
+  function urlsIn(d, bare) {
+    var out = [], re = /https?:\/\/[^\s"'<>)\]\\]+/g, m;
+    var dynRun = /\bloadstring\b/.test(d) && /HttpGet(?:Async)?\s*\(\s*(?!["'(])[A-Za-z_]/.test(d);
+    while ((m = re.exec(d))) {
+      var url = m[0].replace(/[.,;]+$/, ''), w = d.slice(Math.max(0, m.index - 200), m.index).split(/[;\n]/).pop(), role = 'mention';
+      if (/HttpPost|PostAsync|["']POST["']/i.test(w)) role = 'send';
+      else if (/\b(?:loadstring|load)\b/.test(w) && /Http|request|Get/i.test(w)) role = 'run';
+      else if (/Http(?:Get|Post)?|GetAsync|\brequest\b|RequestAsync/i.test(w)) role = 'fetch';
+      var h = classify(url);
+      if (h.cls === 'exfil') role = 'send';
+      // the link sits in a variable that is later passed to HttpGet and loadstring
+      if (role === 'mention' && dynRun && /^(?:hub|paste|tunnel|other)$/.test(h.cls)) role = 'run';
+      // the whole input is just a link
+      if (bare && out.length === 0 && role === 'mention') role = 'fetch';
+      out.push({ url: url, role: role, index: m.index, host: h });
+    }
+    return out;
+  }
+
+  var GENERIC = /^(?:Runs hidden code|Talks to the internet|Sends data to a Discord webhook|Sends or fetches web requests|Loads a script from|Loads from a paste|Downloads from a link built|Hidden behavior|Script is obfuscated)/;
+
+  function dump(src, opts) {
+    opts = opts || {};
+    var remote = opts.remote || {};
+    var raw = String(src), seen = {}, bare = /^\s*https?:\/\/\S+\s*$/.test(raw);
+    var layers = [{ depth: 0, via: 'Original script', code: raw }];
+    peel(raw, 0, layers, seen);
+
+    // Scripts we were given for the links found so far (downloaded or pasted) become layers too.
+    var resolvedKeys = {};
+    for (var i = 0; i < layers.length && layers.length < MAXL; i++) {
+      var dd = blankComments(cleanup(layers[i].code, { fmt: false }).code);
+      urlsIn(dd, bare && i === 0).forEach(function (u) {
+        if ((u.role !== 'run' && u.role !== 'fetch') || layers.length >= MAXL) return;
+        var key = toRaw(u.url), txt = remote[u.url] != null ? remote[u.url] : remote[key];
+        if (txt == null || resolvedKeys[key]) return;
+        resolvedKeys[key] = u.url;
+        var ly = { depth: layers[i].depth + 1, via: 'Downloaded from ' + u.host.name, code: String(txt), url: u.url };
+        layers.push(ly);
+        peel(ly.code, ly.depth, layers, seen);
+      });
+    }
+
+    var merged = {}, loaders = {}, strings = {}, calls = {}, ips = {}, assets = {};
     var cleanedLayers = [];
 
     layers.forEach(function (ly, li) {
       var cl = cleanup(ly.code, { fmt: false }).code, d = blankComments(cl);
       cleanedLayers.push(cl);
-      // behavior rules
       RULES.forEach(function (r) {
         var re = new RegExp(r[1].source, 'gi'), m, n = 0, first = null;
         while ((m = re.exec(d)) && n < 99) { if (!first) first = m; n++; if (!m[0]) re.lastIndex++; }
@@ -283,54 +339,44 @@
         var key = r[2], f = merged[key];
         // the same text shows up in a parent layer (inside a string) and in the unpacked layer: keep the deepest one, count it once
         if (f && f.layer >= li) { f.count = Math.max(f.count, n); return; }
-        merged[key] = { level: r[0], title: r[2], why: r[3], count: Math.max(n, f ? f.count : 0), line: lineAt(d, first.index), layer: li,
+        merged[key] = { level: r[0], title: r[2], why: r[3], count: Math.max(n, f ? f.count : 0), line: lineAt(d, first.index), layer: li, via: ly.via,
           snippet: d.slice(Math.max(0, first.index - 25), first.index + 70).replace(/\s+/g, ' ').trim() };
       });
-      // links
-      var re = /https?:\/\/[^\s"'<>)\]\\]+/g, m;
-      while ((m = re.exec(d))) {
-        var url = m[0].replace(/[.,;]+$/, ''), w = d.slice(Math.max(0, m.index - 200), m.index).split(/[;\n]/).pop(), role = 'mention';
-        if (/HttpPost|PostAsync|["']POST["']/i.test(w)) role = 'send';
-        else if (/\b(?:loadstring|load)\b/.test(w) && /Http|request|Get/i.test(w)) role = 'run';
-        else if (/Http(?:Get|Post)?|GetAsync|\brequest\b|RequestAsync/i.test(w)) role = 'fetch';
-        var h = classify(url);
-        if (h.cls === 'exfil') role = 'send';
-        var e = loaders[url];
-        if (!e) loaders[url] = { url: url, host: hostOf(url), name: h.name, cls: h.cls, role: role, layer: li, line: lineAt(d, m.index), count: 1 };
-        else if (li > e.layer) { e.layer = li; e.line = lineAt(d, m.index); e.count = 1; if (ROLE_RANK[role] < ROLE_RANK[e.role]) e.role = role; }
+      urlsIn(d, bare && li === 0).forEach(function (u) {
+        var url = u.url, role = u.role, h = u.host, e = loaders[url];
+        if (!e) loaders[url] = { url: url, host: hostOf(url), name: h.name, cls: h.cls, role: role, layer: li, line: lineAt(d, u.index), count: 1 };
+        else if (li > e.layer) { e.layer = li; e.line = lineAt(d, u.index); e.count = 1; if (ROLE_RANK[role] < ROLE_RANK[e.role]) e.role = role; }
         else if (li === e.layer) { e.count++; if (ROLE_RANK[role] < ROLE_RANK[e.role]) e.role = role; }
         else if (ROLE_RANK[role] < ROLE_RANK[e.role]) e.role = role;
-      }
-      // addresses and ids
+      });
       (d.match(/(?<![\w.])(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)(?![\w]|\.\d)/g) || []).forEach(function (ip) {
         if (!/^(?:0\.0\.0\.0|127\.0\.0\.1|255\.255\.255\.255)$/.test(ip)) ips[ip] = 1;
       });
       var am, ar = /\brequire\s*\(\s*(\d{6,})\s*\)/g; while ((am = ar.exec(d))) assets[am[1]] = 'Module loaded with require';
       ar = /rbxassetid:\/\/(\d+)/g; while ((am = ar.exec(d))) { if (!assets[am[1]]) assets[am[1]] = 'Asset reference'; }
       ar = /GetObjects\s*\(\s*["']rbxassetid:\/\/(\d+)/g; while ((am = ar.exec(d))) assets[am[1]] = 'Model loaded with GetObjects';
-      // strings
       (d.match(STR) || []).forEach(function (s) {
         var v = s.slice(1, -1);
         if (v.length >= 3 && Object.keys(strings).length < 4000) {
           var x = strings[v]; if (x) x.count++; else strings[v] = { text: v, count: 1, hidden: li > 0 || raw.indexOf(v) < 0, layer: li };
         }
       });
-      // calls
       var skip = /^(if|while|for|function|return|and|or|not|elseif|until|in|do|then)$/;
       d.replace(STR, '""').replace(/\b([A-Za-z_][\w]*(?:[.:][A-Za-z_]\w*)*)\s*\(/g, function (mm, n) {
         if (!skip.test(n)) calls[n] = (calls[n] || 0) + 1; return mm;
       });
     });
 
-    // findings that come from where code is loaded from
     var ldList = Object.keys(loaders).map(function (k) { return loaders[k]; });
+    ldList.forEach(function (l) { l.resolved = !!resolvedKeys[toRaw(l.url)]; });
+
     function addF(level, title, why, ld) {
       if (merged[title]) { merged[title].count += ld.count; return; }
-      merged[title] = { level: level, title: title, why: why, count: ld.count, line: ld.line, layer: ld.layer, snippet: ld.url };
+      merged[title] = { level: level, title: title, why: why, count: ld.count, line: ld.line, layer: ld.layer, via: layers[ld.layer].via, snippet: ld.url };
     }
     ldList.forEach(function (ld) {
       if (ld.cls === 'hub') addF(ld.role === 'run' || ld.role === 'fetch' ? 2 : 1, 'Loads a script from ' + ld.name,
-        'The real code lives on a public script hub and can be changed by its author at any time. Open the link, copy what it returns and dump that too before you run anything.', ld);
+        'The real code lives on a public script hub, and its author can change it at any time. What is safe today may not be safe tomorrow.', ld);
       else if (ld.cls === 'paste') addF(2, 'Loads from a paste or raw-file site (' + ld.name + ')',
         'Code fetched from here can be swapped out at any time, so what you see today may not be what runs tomorrow.', ld);
       else if (ld.cls === 'tunnel') addF(2, 'Talks to a temporary or free-hosting server',
@@ -340,23 +386,73 @@
       else if (ld.cls === 'key') addF(1, 'Key system or ad link',
         'The script sends you through a key or ad page. That page, not this script, decides what gets loaded next.', ld);
       else if (ld.cls === 'invite') addF(1, 'Discord invite', 'Just a community link, but check it matches who published the script.', ld);
+      else if (ld.cls !== 'roblox' && /r[o0]b[l1I][o0]x/i.test(ld.host))
+        addF(3, 'Link pretends to be Roblox', 'The address looks like Roblox but is not. Fake Roblox pages are used to steal logins.', ld);
     });
     var hasHook = !!merged['Sends data to a Discord webhook'];
     if (hasHook && cleanedLayers.some(function (c) { return /UserId|DisplayName|AccountAge|MembershipType|GetRobuxBalance|LocalPlayer/.test(c); }))
       merged['Collects player info and sends it out'] = { level: 3, title: 'Collects player info and sends it out',
-        why: 'The script reads details about your account or character and also contains a webhook. That combination is how most account loggers work.', count: 1, line: merged['Sends data to a Discord webhook'].line, layer: merged['Sends data to a Discord webhook'].layer, snippet: '' };
+        why: 'The script reads details about your account or character and also contains a webhook. That combination is how most account loggers work.', count: 1, line: merged['Sends data to a Discord webhook'].line, layer: merged['Sends data to a Discord webhook'].layer, via: merged['Sends data to a Discord webhook'].via, snippet: '' };
 
     var obf = obfuscation(raw);
-    if (layers.length > 1) { obf.score = Math.min(100, obf.score + 10); obf.signals.push(layers.length - 1 + ' hidden layer' + (layers.length > 2 ? 's' : '') + ' unpacked from inside the script'); }
+    var innerLayers = layers.filter(function (l) { return !l.url && l.depth > 0; }).length;
+    if (innerLayers) { obf.score = Math.min(100, obf.score + 10); obf.signals.push(innerLayers + ' hidden layer' + (innerLayers > 1 ? 's' : '') + ' unpacked from inside the script'); }
     var readableUrls = ldList.filter(function (l) { return l.cls !== 'roblox'; }).length;
     if (obf.score >= 40 && !readableUrls && !Object.keys(merged).some(function (k) { return merged[k].level >= 2; }))
-      merged['Hidden behavior'] = { level: 2, title: 'Hidden behavior', why: 'The script is heavily scrambled and nothing readable came out of it. A static check cannot see what it does, so treat it as unknown.', count: 1, line: 1, layer: 0, snippet: '' };
-    else if (obf.score >= 15 && obf.score < 40) merged['Script is obfuscated'] = { level: 1, title: 'Script is obfuscated', why: 'It is written to be hard to read. Check the decoded layers and the text it contains.', count: 1, line: 1, layer: 0, snippet: '' };
-    else if (obf.score >= 40 && merged['Hidden behavior'] === undefined) merged['Script is obfuscated'] = { level: 1, title: 'Script is obfuscated (' + obf.label.toLowerCase() + ')', why: 'It is written to be hard to read. The checks above still ran on everything that could be decoded.', count: 1, line: 1, layer: 0, snippet: '' };
+      merged['Hidden behavior'] = { level: 2, title: 'Hidden behavior', why: 'The script is heavily scrambled and nothing readable came out of it. A text check cannot see what it does, so treat it as unknown.', count: 1, line: 1, layer: 0, via: layers[0].via, snippet: '' };
+    else if (obf.score >= 15 && obf.score < 40) merged['Script is obfuscated'] = { level: 1, title: 'Script is obfuscated', why: 'It is written to be hard to read. Check the unpacked layers and the text it contains.', count: 1, line: 1, layer: 0, via: layers[0].via, snippet: '' };
+    else if (obf.score >= 40 && merged['Hidden behavior'] === undefined) merged['Script is obfuscated'] = { level: 1, title: 'Script is obfuscated (' + obf.label.toLowerCase() + ')', why: 'It is written to be hard to read. The checks still ran on everything that could be decoded.', count: 1, line: 1, layer: 0, via: layers[0].via, snippet: '' };
+
+    // Which loaders still point at code we have not read?
+    var pending = [], pk = {};
+    ldList.forEach(function (l) {
+      if (l.resolved) return;
+      var needs = l.role === 'run' || (l.role === 'fetch' && (l.cls === 'hub' || l.cls === 'paste' || bare));
+      var key = toRaw(l.url);
+      if (!needs || pk[key]) return; pk[key] = 1;
+      pending.push({ url: l.url, fetchUrl: key, name: l.name, cls: l.cls, role: l.role, layer: l.layer,
+        blocked: !!NEVER_FETCH[l.cls], auto: l.cls === 'hub' || l.cls === 'paste' });
+    });
+    var dynamic = !!merged['Downloads from a link built while running'];
+    var resolvedCount = ldList.filter(function (l) { return l.resolved; }).length;
+    // Once the loaded code has been read, "it loads other code" is no longer a mystery.
+    if (!pending.length && !dynamic && resolvedCount) {
+      Object.keys(merged).forEach(function (k) { if (/^(?:Runs hidden code|Talks to the internet|Loads a script from)/.test(k) && merged[k].level === 2) merged[k].level = 1; });
+    }
 
     var f = Object.keys(merged).map(function (k) { return merged[k]; }).sort(function (a, b) { return b.level - a.level || a.layer - b.layer; });
     var top = f.length ? f[0].level : 0;
     var score = Math.min(100, f.reduce(function (a, x) { return a + ({ 3: 40, 2: 15, 1: 4 }[x.level]); }, 0));
+    var level = top === 3 ? 'high' : top === 2 ? 'medium' : 'none';
+
+    var verdict;
+    if (level === 'high') verdict = { state: 'bad', title: 'Don’t run this script',
+      advice: 'It does things that account stealers and loggers do. If you already ran it, change your Roblox password and log out of all devices.' };
+    else if (pending.length || dynamic || merged['Hidden behavior']) verdict = { state: 'unknown', title: 'Can’t tell yet',
+      advice: pending.length ? 'This script mostly loads other code, and we have not read that code. The real script is behind the link, not in this file. Download it below, or paste what the link returns, and we will check it too.'
+        : dynamic ? 'This script builds its download link while it runs, so we can’t see where its code comes from. Don’t run it unless you trust who made it.'
+        : 'This script is scrambled so well that nothing readable came out. We can’t say what it does. Don’t run it unless you trust who made it.' };
+    else if (level === 'medium') verdict = { state: 'warn', title: 'Be careful',
+      advice: 'It does things worth a second look. Only run it if you trust who made it.' };
+    else verdict = { state: 'ok', title: 'No warning signs found',
+      advice: 'We found nothing suspicious in everything we could read. No check is perfect, so only run scripts from people you trust.' };
+
+    // Plain-English list of what the script does
+    var says = [], sk = {};
+    function nm(l) { return l.cls === 'hub' || l.cls === 'paste' ? l.name : l.host; }
+    function say(t) { if (!sk[t]) { sk[t] = 1; says.push(t); } }
+    ldList.forEach(function (l) {
+      if (l.role === 'run') say('Downloads code from ' + nm(l) + ' and runs it. ' + (l.resolved ? 'We read that code too.' : 'We have not read that code yet.'));
+      else if (l.role === 'fetch' && (l.cls === 'hub' || l.cls === 'paste' || bare)) say(bare ? 'This is a link to a script on ' + nm(l) + '. ' + (l.resolved ? 'We read it.' : 'We have not read it yet.')
+        : 'Downloads a script from ' + nm(l) + '. ' + (l.resolved ? 'We read it too.' : 'We have not read it yet.'));
+      else if (l.role === 'send') say('Sends data to ' + (l.cls === 'exfil' ? 'a Discord webhook' : nm(l)) + '.');
+    });
+    if (dynamic) say('Downloads code from a link it builds while running, so we can’t see where from.');
+    if (innerLayers) say('Hides code inside itself and runs it. We unpacked it and checked it.');
+    f.forEach(function (x) { if (x.level >= 2 && !GENERIC.test(x.title)) say(x.title + '.'); });
+    if (obf.score >= 40) say('Is scrambled on purpose so you can’t read it.');
+    else if (obf.score >= 15) say('Is partly scrambled to make it harder to read.');
+    if (!says.length) say('Nothing unusual in the text we could read.');
 
     var callList = Object.keys(calls).map(function (k) { return { text: k, count: calls[k], cat: callCat(k) }; }).sort(function (a, b) { return b.count - a.count; });
     var strList = Object.keys(strings).map(function (k) { return strings[k]; }).sort(function (a, b) { return (b.hidden - a.hidden) || (b.count - a.count); });
@@ -364,10 +460,10 @@
 
     var out = layers.map(function (ly, i) {
       var base = cleanedLayers[i], view = base.length <= 300000 ? cleanup(ly.code, { fmt: true }).code : base;
-      return { depth: ly.depth, via: ly.via, size: ly.code.length, lines: ly.code.split('\n').length, code: view };
+      return { depth: ly.depth, via: ly.via, url: ly.url || null, size: ly.code.length, lines: ly.code.split('\n').length, code: view };
     });
     return {
-      level: top === 3 ? 'high' : top === 2 ? 'medium' : 'none', score: score, findings: f,
+      level: level, score: score, verdict: verdict, says: says, pending: pending, findings: f,
       urls: tally(ldList.map(function (l) { return l.url; })),
       loaders: ldList, obfuscation: obf, layers: out, strings: strList, calls: callList, catLabels: CAT_LABEL,
       iocs: { webhooks: ldList.filter(function (l) { return l.cls === 'exfil'; }), ips: Object.keys(ips),
@@ -415,6 +511,6 @@
     return out;
   }
 
-  var api = { cleanup: cleanup, scan: scan, dump: dump, inspect: inspect, bytecode: bytecode };
+  var api = { cleanup: cleanup, scan: scan, dump: dump, inspect: inspect, bytecode: bytecode, toRaw: toRaw };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.LuaScriptFucker = api;
 })(typeof window !== 'undefined' ? window : this);

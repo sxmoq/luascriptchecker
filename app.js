@@ -4,9 +4,11 @@
   var REPO = 'https://github.com/sxmoq/luascriptchecker';
   // Paste your Discord invite between the quotes when it is ready, for example 'https://discord.gg/yourcode'.
   var DISCORD_URL = '';
+  // Optional: address of your own download helper (see proxy-worker.js). Many script sites block direct downloads from a web page.
+  var PROXY_URL = '';
 
   var VIEWS = {
-    dump: ['Dumper', 'Reads a script and shows what it hides: loaders, hidden layers, links and risky behavior.'],
+    dump: ['Dumper', 'Paste a script or a link. We read it, follow what it downloads, and tell you if it looks safe.'],
     clean: ['Deobfuscator', 'Turn an unreadable script into something you can read.'],
     byte: ['Bytecode', 'Read the text hidden inside compiled Luau or Lua files.'],
     api: ['API', 'Use the same tools from your own JavaScript.'],
@@ -62,16 +64,15 @@
 
   /* ---------- shared report pieces ---------- */
   function bandHtml(d, extra) {
-    var v ={ high: ['bad', 'Do not run this script'], medium: ['warn', 'Check this before you run it'], none: ['ok', 'No red flags found'] }[d.level];
-    var why = d.level === 'none' ? 'This only reads the text. It can’t prove a script is safe.'
-      : 'Found: ' + d.findings.slice(0, 3).map(function (f) { return f.title.charAt(0).toLowerCase() + f.title.slice(1); }).join('; ') + '.';
-    return { title: v[1], html: '<div class="verdict ' + v[0] + '"><div><h2>' + v[1] + '</h2><p>' + esc(why) + '</p></div>' +
-      '<div class="vnum"><b>' + d.score + '</b><span>risk out of 100</span></div>' + (extra || '') + '</div>' };
+    var vd = d.verdict, cls = { bad: 'bad', warn: 'warn', ok: 'ok', unknown: 'unk' }[vd.state];
+    var num = vd.state === 'unknown' ? '<b>?</b><span>not enough to judge</span>' : '<b>' + d.score + '</b><span>risk out of 100</span>';
+    return { title: vd.title, html: '<div class="verdict ' + cls + '"><div><h2>' + esc(vd.title) + '</h2><p>' + esc(vd.advice) + '</p></div>' +
+      '<div class="vnum">' + num + '</div>' + (extra || '') + '</div>' };
   }
   function findingsHtml(list, withLayer) {
     if (!list.length) return '<p class="empty">Nothing risky matched.</p>';
     return list.map(function (f) {
-      var where = 'line ' + f.line + (withLayer && f.layer > 0 ? ' · inside layer ' + f.layer : '');
+      var where = 'line ' + f.line + (withLayer && f.layer > 0 ? ' · in: ' + f.via : '');
       return '<div class="item"><span class="dot l' + f.level + '"></span><div><div class="ih"><b>' + esc(f.title) + '</b><span class="muted">' +
         (f.count > 1 ? f.count + ' times · ' : '') + where + '</span></div><p>' + esc(f.why) + '</p>' +
         (f.snippet ? '<code class="snip">' + esc(f.snippet) + '</code>' : '') + '</div></div>';
@@ -82,27 +83,82 @@
   var ROLE = { run: 'Downloads and runs', send: 'Sends data to', fetch: 'Downloads', mention: 'Mentioned' };
   var CLS_CHIP = { hub: 'hub', exfil: 'bad', tracker: 'bad', paste: 'warn', tunnel: 'warn', short: 'warn', roblox: 'ok' };
 
+  var remote = {}, tried = {}, runId = 0, histFor = -1;
+  function autoOn() { return $('autoDl').checked; }
+
   function dump() {
     if (!need()) return;
-    try { cur = L.dump(src); } catch (e) { msg('Could not read this script (' + e.message + ').'); return; }
-    tab = 'sum'; layerIx = 0; catSel = 'all';
-    render();
+    remote = {}; tried = {}; runId++; tab = 'sum'; layerIx = 0; catSel = 'all';
+    if (!analyze()) return;
     $('dumpOut').scrollIntoView({ behavior: 'smooth', block: 'start' });
-    addHist('Dump', bandHtml(cur).title + (cur.findings.length ? ', ' + plural(cur.findings.length, 'finding') : '') + (cur.meta.layers ? ', ' + plural(cur.meta.layers, 'hidden layer') : ''));
+    follow(runId);
+  }
+  function analyze() {
+    try { cur = L.dump(src, { remote: remote }); } catch (e) { msg('Could not read this script (' + e.message + ').'); return false; }
+    if (layerIx >= cur.layers.length) layerIx = 0;
+    render(); return true;
+  }
+  // Downloads text only. The text is never run, only read.
+  function fetchText(u) {
+    function get(url) {
+      return fetch(url, { redirect: 'follow', credentials: 'omit' }).then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); });
+    }
+    return get(u).catch(function (e) {
+      if (!PROXY_URL) throw e;
+      return get(PROXY_URL + (PROXY_URL.indexOf('?') < 0 ? '?url=' : '&url=') + encodeURIComponent(u));
+    }).then(function (t) {
+      if (t.length > 3000000) throw new Error('too big');
+      if (/^\s*<(?:!doctype|html)/i.test(t)) throw new Error('web page');
+      return t;
+    });
+  }
+  function fetchOne(p, id) {
+    tried[p.fetchUrl] = 'loading'; render();
+    return fetchText(p.fetchUrl).then(function (t) { if (id === runId) { remote[p.fetchUrl] = t; tried[p.fetchUrl] = 'done'; } },
+      function () { if (id === runId) tried[p.fetchUrl] = 'failed'; }).then(function () { if (id === runId) analyze(); });
+  }
+  function follow(id) {
+    if (id !== runId || !cur) return;
+    var next = autoOn() ? cur.pending.filter(function (p) { return p.auto && !p.blocked && !tried[p.fetchUrl]; })[0] : null;
+    if (next) { fetchOne(next, id).then(function () { follow(id); }); return; }
+    if (histFor === id) { var h = store('lsf_hist') || []; h.shift(); store('lsf_hist', h); }
+    histFor = id;
+    addHist('Dump', cur.verdict.title + (cur.findings.length ? ', ' + plural(cur.findings.length, 'finding') : '') + (cur.meta.layers ? ', ' + plural(cur.meta.layers, 'extra layer') : ''));
+  }
+
+  function doesHtml(d) {
+    return '<h3>What this script does</h3><ul class="does">' + d.says.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>';
+  }
+  function pendingHtml(d) {
+    if (!d.pending.length) return '';
+    return '<h3>Scripts we still need to read</h3>' + d.pending.map(function (p, i) {
+      var st = tried[p.fetchUrl], line;
+      if (p.blocked) line = '<p>We don’t download links like this for you, because they are often tracking or shady links. Open it only if you trust it, then paste what you see.</p>';
+      else if (st === 'loading') line = '<p class="muted">Downloading…</p>';
+      else {
+        line = (st === 'failed' ? '<p>We couldn’t download this one automatically. Many sites block that. Paste it yourself below, it takes about 20 seconds.</p>' : '') +
+          '<div class="row" style="margin-top:8px">' + (st === 'failed' ? '' : '<button class="btn sm solid" data-dl="' + i + '" type="button">Download and check it</button>') +
+          '<a class="btn sm" href="' + esc(p.fetchUrl) + '" target="_blank" rel="noopener noreferrer">Open link</a></div>';
+      }
+      return '<div class="pend"><div class="ih"><b>' + esc(p.name) + '</b><span class="muted">' + (p.layer ? 'found in a script it downloads' : 'found in your script') + '</span></div>' +
+        '<code>' + esc(p.fetchUrl) + '</code>' + line +
+        '<details' + (st === 'failed' || p.blocked ? ' open' : '') + '><summary>Paste it yourself</summary><ol class="steps"><li>Open the link in a new tab.</li><li>Select everything on that page and copy it.</li><li>Paste it here.</li></ol>' +
+        '<textarea class="paste" spellcheck="false" aria-label="Script text"></textarea><div class="row"><button class="btn sm solid" data-add="' + i + '" type="button">Check it</button></div></details></div>';
+    }).join('');
   }
 
   function render() {
-    var d = cur, o = d.obfuscation, links = d.loaders.length;
+    var d = cur, o = d.obfuscation, links = d.loaders.length, n = d.meta.layers;
     var facts = '<div class="facts"><span><b>' + esc(o.label) + '</b>' + (o.families.length ? ' (' + esc(o.families.join(', ')) + ')' : '') + '</span>' +
-      '<span><b>' + d.meta.layers + '</b> hidden ' + (d.meta.layers === 1 ? 'layer' : 'layers') + ' unpacked</span>' +
+      '<span><b>' + n + '</b> extra ' + (n === 1 ? 'layer' : 'layers') + ' read</span>' +
       '<span><b>' + links + '</b> ' + (links === 1 ? 'link' : 'links') + '</span>' +
-      '<span><b>' + d.meta.lines + '</b> lines, ' + (d.meta.bytes / 1024).toFixed(1) + ' KB</span></div>';
-    var tabs = [['sum', 'Summary', d.findings.length], ['links', 'Links', links], ['layers', 'Layers', d.layers.length], ['strs', 'Strings', d.strings.length], ['calls', 'Calls', d.calls.length]];
-    $('dumpOut').innerHTML = bandHtml(d, facts).html +
+      '<span><b>' + d.meta.lines + '</b> ' + (d.meta.lines === 1 ? 'line' : 'lines') + ', ' + (d.meta.bytes / 1024).toFixed(1) + ' KB</span></div>';
+    var tabs = [['sum', 'Details', d.findings.length], ['links', 'Links', links], ['layers', 'Layers', d.layers.length], ['strs', 'Strings', d.strings.length], ['calls', 'Calls', d.calls.length]];
+    $('dumpOut').innerHTML = bandHtml(d, facts).html + doesHtml(d) + pendingHtml(d) +
       '<div class="tabs" role="tablist">' + tabs.map(function (t) {
         return '<button class="tab' + (t[0] === tab ? ' on' : '') + '" role="tab" data-tab="' + t[0] + '">' + t[1] + '<i>' + t[2] + '</i></button>';
       }).join('') + '</div><div class="panel" id="tabBody"></div>' +
-      '<div class="row"><button class="btn sm" data-act="report" type="button">Save report (.txt)</button><button class="btn sm" data-act="json" type="button">Save as JSON</button></div>';
+      '<div class="row"><button class="btn sm" data-act="summary" type="button">Copy summary</button><button class="btn sm" data-act="report" type="button">Save report (.txt)</button><button class="btn sm" data-act="json" type="button">Save as JSON</button></div>';
     body();
   }
 
@@ -110,7 +166,7 @@
     var d = cur, h = '';
     if (tab === 'sum') {
       var o = d.obfuscation;
-      h += (d.meta.layers ? '<div class="hint">Hidden code was found inside this script and checked too. Open the <b>Layers</b> tab to read it.</div>' : '') + findingsHtml(d.findings, true);
+      h += (d.meta.layers ? '<div class="hint">Extra code was unpacked or downloaded and checked too. Open the <b>Layers</b> tab to read it.</div>' : '') + findingsHtml(d.findings, true);
       h += '<h3>Obfuscation</h3><div><b>' + esc(o.label) + '</b> <span class="muted">(score ' + o.score + ' out of 100' + (o.families.length ? ', looks like ' + esc(o.families.join(', ')) : '') + ')</span>' +
         (o.signals.length ? '<ul class="sig">' + o.signals.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>' : '<p class="muted" style="margin:4px 0 0">Nothing here looks scrambled.</p>') + '</div>';
       if (d.iocs.ips.length) h += '<h3>IP addresses</h3><ul class="list">' + d.iocs.ips.map(function (ip) { return '<li><code>' + esc(ip) + '</code></li>'; }).join('') + '</ul>';
@@ -160,13 +216,13 @@
   }
 
   function reportText() {
-    var d = cur, b = bandHtml(d).title;
-    var out = ['LuaScriptFucker report', 'File: ' + (fname || 'pasted script'), 'Verdict: ' + b + ' (risk ' + d.score + '/100)',
-      'Obfuscation: ' + d.obfuscation.label + (d.obfuscation.families.length ? ' (' + d.obfuscation.families.join(', ') + ')' : ''),
-      'Hidden layers unpacked: ' + d.meta.layers, '', 'Findings:'];
-    out = out.concat(d.findings.length ? d.findings.map(function (f) { return '- ' + f.title + ' (line ' + f.line + (f.layer ? ', layer ' + f.layer : '') + '): ' + f.why; }) : ['- none']);
+    var d = cur;
+    var out = ['LuaScriptFucker report', 'File: ' + (fname || 'pasted script'), 'Verdict: ' + d.verdict.title, d.verdict.advice, '', 'What this script does:']
+      .concat(d.says.map(function (s) { return '- ' + s; }));
+    out.push('', 'Findings:');
+    out = out.concat(d.findings.length ? d.findings.map(function (f) { return '- ' + f.title + ' (line ' + f.line + ', ' + f.via + '): ' + f.why; }) : ['- none']);
     out.push('', 'Links:');
-    out = out.concat(d.loaders.length ? d.loaders.map(function (l) { return '- [' + ROLE[l.role] + '] ' + l.name + ': ' + l.url; }) : ['- none']);
+    out = out.concat(d.loaders.length ? d.loaders.map(function (l) { return '- [' + ROLE[l.role] + '] ' + l.name + ': ' + l.url + (l.resolved ? ' (read)' : ''); }) : ['- none']);
     return out.join('\n');
   }
 
@@ -176,6 +232,14 @@
     else if (b.dataset.layer) { layerIx = +b.dataset.layer; body(); }
     else if (b.dataset.cat) { catSel = b.dataset.cat; body(); }
     else if (b.dataset.copy) copy(cur.loaders[+b.dataset.copy].url, b);
+    else if (b.dataset.dl) { var p = cur.pending[+b.dataset.dl]; if (p) fetchOne(p, runId).then(function () { follow(runId); }); }
+    else if (b.dataset.add) {
+      var p2 = cur.pending[+b.dataset.add], ta = b.closest('.pend').querySelector('textarea');
+      if (!p2) return;
+      if (!ta.value.trim()) { msg('Paste the script text into the box first.'); return; }
+      msg(''); remote[p2.fetchUrl] = ta.value; tried[p2.fetchUrl] = 'done'; analyze(); follow(runId);
+    }
+    else if (b.dataset.act === 'summary') copy(reportText(), b);
     else if (b.dataset.act === 'copy-layer') copy(cur.layers[layerIx].code, b);
     else if (b.dataset.act === 'save-layer') dl(layerIx === 0 ? 'cleaned.lua' : 'layer' + layerIx + '.lua', cur.layers[layerIx].code);
     else if (b.dataset.act === 'report') dl('report.txt', reportText());
@@ -236,6 +300,8 @@
   ['dragleave', 'drop'].forEach(function (ev) { bz.addEventListener(ev, function (e) { e.preventDefault(); bz.classList.remove('drag'); }); });
   bz.addEventListener('drop', function (e) { readBytes(e.dataTransfer.files[0]); });
 
+  if (store('lsf_auto') === false) $('autoDl').checked = false;
+  $('autoDl').addEventListener('change', function () { store('lsf_auto', $('autoDl').checked); });
   $('bDump').addEventListener('click', dump);
   $('inp').addEventListener('keydown', function (e) { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') dump(); });
 
