@@ -52,28 +52,11 @@
         <span class="muted">Nothing is ever run, only read.</span>
       </div>
     </section>
-    <div class="examples" id="examples">
-      <span>Try an example:</span>
-      <button class="chip-btn" data-ex="normal" type="button">Normal script</button>
-      <button class="chip-btn" data-ex="loader" type="button">Loader link</button>
-      <button class="chip-btn" data-ex="stealer" type="button">Stealer</button>
-      <button class="chip-btn" data-ex="hidden" type="button">Hidden stealer</button>
-      <button class="chip-btn" data-ex="luarmor" type="button">Luarmor loader</button>
-      <button class="chip-btn" data-ex="cookie" type="button">Cookie logger</button>
-      <button class="chip-btn" data-ex="fake" type="button">Fake Robux link</button>
-      <button class="chip-btn" data-ex="installer" type="button">Installer</button>
-    </div>
 
     <p id="msg" class="msg" role="status"></p>
 
     <section class="view" id="v-dump">
       <div id="dumpOut"></div>
-      <div class="catches" id="catches">
-        <div><b>Item stealers</b><span>Scripts that gift, trade or mail your items to someone else.</span></div>
-        <div><b>Cookie and token loggers</b><span>Roblox cookies, Discord tokens and saved browser logins.</span></div>
-        <div><b>Fake Robux and group scams</b><span>Lookalike Roblox links, free Robux bait and group payout pages.</span></div>
-        <div><b>Malware installers</b><span>Downloads of .exe files, Windows commands and hidden loaders.</span></div>
-      </div>
     </section>
 
     <section class="view" id="v-clean" hidden>
@@ -139,8 +122,6 @@ console.log(report.verdict, report.pending);</pre>
         <div class="row"><button class="btn solid" id="gSend" type="button">Open on GitHub</button><a class="btn" href="https://github.com/sxmoq/luascriptchecker" target="_blank" rel="noopener">View the repository</a></div>
       </div>
     </section>
-
-    <footer>A text-only check can’t prove a script is safe. Read code before you run it.</footer>
   </main>
 </div>
 <script src="core.js"></script>

@@ -224,3 +224,27 @@ details.acc>p,details.acc>ul.sig{margin-bottom:14px}
 .catches b{display:block;margin-bottom:2px}
 .catches span{color:var(--muted);font-size:13.5px}
 #dumpOut:not(:empty)+.catches{display:none}
+
+/* readability */
+:root{--muted:#46506a;--line:#cfd5e0}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--muted:#aab3c5;--line:#2c3547;--ink:#f2f4f9}}
+:root[data-theme="dark"]{--muted:#aab3c5;--line:#2c3547;--ink:#f2f4f9}
+body{font-size:16px}
+.muted,.item p,.does li,.hint,.lk .meta,.note{font-size:inherit}
+.note{font-size:13px}
+.does li{padding:14px 18px;font-size:15.5px}
+.does svg{width:21px;height:21px}
+.verdict{padding:26px 28px}
+.verdict h2{font-size:30px}
+.verdict p{font-size:16.5px}
+.vicon{width:56px;height:56px}
+.vicon svg{width:30px;height:30px}
+.item{padding:16px 0}
+.ih b{font-size:16px}
+code{font-size:13px}
+.todo{list-style:none;counter-reset:t;margin:0;padding:0;border:1px solid var(--line);border-radius:12px;background:var(--panel);overflow:hidden}
+.todo li{counter-increment:t;display:grid;grid-template-columns:30px 1fr;gap:2px 14px;padding:14px 18px;border-bottom:1px solid var(--line)}
+.todo li:last-child{border-bottom:0}
+.todo li::before{content:counter(t);grid-row:span 2;display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--accent);color:var(--accent-ink);font-size:13px;font-weight:700}
+.todo b{font-size:16px}
+.todo span{color:var(--muted)}

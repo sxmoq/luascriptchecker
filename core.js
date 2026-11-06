@@ -262,13 +262,34 @@
     while ((m = LS.exec(cl)) && found.length < 40) found.push({ via: 'loadstring', text: fromBytes(unquote(m[1])) });
     (cl.match(STR) || []).forEach(function (lit) {
       var v = lit.slice(1, -1);
-      if (v.length >= 48 && /^[A-Za-z0-9+\/]+={0,2}$/.test(v)) {
+      if (v.length >= 24 && /^[A-Za-z0-9+\/]+={0,2}$/.test(v)) {
         try { found.push({ via: 'Base64 string', text: fromBytes(atob(v)) }); } catch (e) {}
+        try { found.push({ via: 'Reversed Base64 string', text: fromBytes(atob(v.split('').reverse().join(''))) }); } catch (e) {}
       } else if (v.length >= 48 && /^(?:[0-9a-fA-F]{2})+$/.test(v)) {
         var s = ''; for (var i = 0; i < v.length; i += 2) s += String.fromCharCode(parseInt(v.substr(i, 2), 16));
         found.push({ via: 'Hex string', text: fromBytes(s) });
+      } else if (v.length >= 36 && /(?:%[0-9a-fA-F]{2}){12,}/.test(v)) {
+        try { found.push({ via: 'URL-encoded text', text: decodeURIComponent(v) }); } catch (e) {}
+      } else if (v.length >= 40) {
+        found.push({ via: 'Code stored in text', text: fromBytes(unquote(lit)) });
       }
     });
+    var nc = blankComments(cl), lb, LB = /\[(=*)\[([\s\S]*?)\]\1\]/g;
+    while ((lb = LB.exec(nc)) && found.length < 60) found.push({ via: 'Code stored in text', text: lb[2] });
+    var rv, RV = new RegExp('string\\s*\\.\\s*reverse\\s*\\(\\s*(' + STR.source + ')\\s*\\)|\\(\\s*(' + STR.source + ')\\s*\\)\\s*:\\s*reverse\\s*\\(\\s*\\)', 'g');
+    while ((rv = RV.exec(cl)) && found.length < 60) found.push({ via: 'Reversed text', text: fromBytes(unquote(rv[1] || rv[2]).split('').reverse().join('')) });
+    var nl, NL = /\{\s*((?:\d{1,3}\s*,\s*){29,}\d{1,3})\s*,?\s*\}/g, tries = 0;
+    while ((nl = NL.exec(cl)) && tries++ < 4) {
+      var nums = nl[1].split(',').map(function (x) { return +x.trim(); });
+      if (nums.some(function (x) { return x > 255; })) continue;
+      for (var key = 0; key < 256; key++) {
+        var head = ''; for (var j = 0; j < Math.min(nums.length, 300); j++) head += String.fromCharCode(nums[j] ^ key);
+        if (looksLikeCode(head)) {
+          var full = ''; for (var j2 = 0; j2 < nums.length; j2++) full += String.fromCharCode(nums[j2] ^ key);
+          found.push({ via: key ? 'Number list (key ' + key + ')' : 'Number list', text: fromBytes(full) }); break;
+        }
+      }
+    }
     found.forEach(function (f) {
       if (out.length >= 25 || !looksLikeCode(f.text)) return;
       var key = f.text.length + ':' + f.text.slice(0, 120);
@@ -470,11 +491,11 @@
     var pending = [], pk = {};
     ldList.forEach(function (l) {
       if (l.resolved || l.gated || l.known) return;
-      var needs = l.role === 'run' || (l.role === 'fetch' && (l.cls === 'hub' || l.cls === 'paste' || bare));
+      var needs = l.role === 'run' || (l.role === 'fetch' && (l.cls === 'hub' || l.cls === 'paste' || bare || /\.(?:lua|luau|txt)(?:[?#]|$)|\/raw\//i.test(l.url)));
       var key = toRaw(l.url);
       if (!needs || pk[key]) return; pk[key] = 1;
       pending.push({ url: l.url, fetchUrl: key, name: l.name, cls: l.cls, role: l.role, layer: l.layer,
-        blocked: !!NEVER_FETCH[l.cls], auto: l.cls === 'hub' || l.cls === 'paste' });
+        blocked: !!NEVER_FETCH[l.cls], auto: /^(?:hub|paste|other|hosting)$/.test(l.cls) });
     });
     var dynamic = !!M('Downloads from a link built while running');
     var hiddenMod = !!M('Loads a hidden module by ID');

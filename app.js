@@ -73,7 +73,7 @@
   function show(v) {
     document.querySelectorAll('.side button').forEach(function (b) { b.classList.toggle('on', b.dataset.v === v); });
     document.querySelectorAll('.view').forEach(function (s) { s.hidden = s.id !== 'v-' + v; });
-    $('inputCard').hidden = !NEEDS[v]; $('examples').hidden = !NEEDS[v];
+    $('inputCard').hidden = !NEEDS[v];
     $('title').textContent = VIEWS[v][0]; $('sub').textContent = VIEWS[v][1];
     msg('');
     if (v === 'hist') hist();
@@ -190,6 +190,26 @@
     }).join('\n\n');
   }
   function sec(id, title, note) { return '<h3 class="sec" id="' + id + '">' + title + (note ? ' <span class="muted">' + note + '</span>' : '') + '</h3>'; }
+  function todoHtml(d) {
+    var t = d.findings.map(function (f) { return f.title; }).join('|'), st = d.verdict.state, k = d.verdict.kind, a = [];
+    function has(re) { return re.test(t); }
+    if (st === 'bad') {
+      a.push(['Don’t run this script.', 'Close it and delete it. If someone sent it to you, don’t trust anything else they send.']);
+      a.push(['If you already ran it, secure your account now.', 'Change your Roblox password, then open Settings, Security and log out of all other sessions. Turn on 2-step verification.']);
+    }
+    if (has(/cookie|private account|webhook|Collects player info/i)) a.push(['Assume your login details were sent out if you ran it.', 'Check your Robux, trades and inventory for anything you didn’t do, and change your password from a clean device.']);
+    if (has(/program or installer|program file|Windows commands|system commands/i)) a.push(['Don’t open anything it downloaded.', 'Delete the file, then run a full scan with Windows Security or Malwarebytes.']);
+    if (has(/Discord login|browser passwords/i)) a.push(['Change your Discord and browser passwords.', 'Log out of Discord everywhere, and use a different, clean device if you can.']);
+    if (has(/crypto/i)) a.push(['Check your crypto wallets.', 'If you ran it, move your funds to a new wallet.']);
+    if (has(/pretends to be Roblox|giveaway|group scam/i)) a.push(['Never sign in through a link from a script.', 'Roblox never asks you to log in this way. Report the link at roblox.com/support.']);
+    if (has(/Sends items/i)) a.push(['Lock down trading.', 'In Settings, Privacy, limit who can trade with you, and check your inventory.']);
+    if (k === 'pending') a.push(['Let us read the linked script.', 'Press “Download and check it” in the box below, or open the link and paste what it shows.']);
+    if (k === 'dynamic' || k === 'hidden' || d.obfuscation.score >= 40) a.push(['Only run it if you trust the author.', 'Look the script up on a hub with reviews or in the author’s Discord, and ask for a version that isn’t scrambled.']);
+    if (k === 'protected') a.push(['Get it from the creator’s own Discord or hub.', 'Skip key pages that ask you to install something or take surveys.']);
+    if (st !== 'bad') a.push(['Try it on an alt account first.', 'Use a new account with nothing valuable, ideally in a private server.']);
+    a.push(['Never paste your password or cookie anywhere a script shows.', 'No real script needs them.']);
+    return sec('sec-todo', 'What you should do') + '<ol class="todo">' + a.map(function (x) { return '<li><b>' + esc(x[0]) + '</b><span>' + esc(x[1]) + '</span></li>'; }).join('') + '</ol>';
+  }
   function netHtml(d) {
     if (!d.loaders.length) return '<p class="empty" style="padding:18px 0 4px">No links or network calls found.</p>';
     return d.loaders.map(function (l, i) {
@@ -218,8 +238,8 @@
     if (d.iocs.ips.length) tech += '<h4>IP addresses</h4><ul class="list">' + d.iocs.ips.map(function (ip) { return '<li><code>' + esc(ip) + '</code></li>'; }).join('') + '</ul>';
     if (d.iocs.assets.length) tech += '<h4>Roblox asset IDs</h4><ul class="list">' + d.iocs.assets.map(function (a) { return '<li><code>' + esc(a.id) + '</code><span class="chip">' + esc(a.kind) + '</span></li>'; }).join('') + '</ul>';
     $('dumpOut').innerHTML = busyHtml(d) + bandHtml(d, facts).html +
-      '<nav class="jump" aria-label="On this page"><a href="#sec-does">Summary</a><a href="#sec-net">Network</a><a href="#sec-warn">Warnings</a><a href="#sec-code">Code</a><a href="#sec-more">Details</a></nav>' +
-      '<div id="sec-does">' + doesHtml(d) + '</div>' + tipsHtml(d) + pendingHtml(d) +
+      '<nav class="jump" aria-label="On this page"><a href="#sec-does">Summary</a><a href="#sec-todo">What to do</a><a href="#sec-net">Network</a><a href="#sec-warn">Warnings</a><a href="#sec-code">Code</a><a href="#sec-more">Details</a></nav>' +
+      '<div id="sec-does">' + doesHtml(d) + '</div>' + todoHtml(d) + pendingHtml(d) +
       sec('sec-net', 'Network activity', '(' + links + ')') + '<div class="hint">Links are never opened for you unless you press Download. We never run what they return, only read it.</div>' + netHtml(d) +
       sec('sec-warn', 'Warnings', '(' + warns + ')') + findingsHtml(d.findings, true) +
       sec('sec-code', 'Decoded code', n ? '(' + plural(n, 'extra layer') + ' unpacked, all in this one file)' : '') +
@@ -320,10 +340,6 @@
   $('inp').addEventListener('input', function () { setSrc($('inp').value, ''); });
   $('bOpen').addEventListener('click', function () { $('file').click(); });
   $('bClear').addEventListener('click', function () { setSrc('', ''); cur = null; runId++; $('dumpOut').innerHTML = ''; msg(''); $('inp').focus(); });
-  $('examples').addEventListener('click', function (e) {
-    var b = e.target.closest('button[data-ex]'); if (!b) return;
-    setSrc(EX[b.dataset.ex], ''); msg(''); dump();
-  });
 
   function readText(f) { if (!f) return; var r = new FileReader(); r.onload = function () { setSrc(String(r.result), f.name); msg(''); }; r.readAsText(f); }
   $('file').addEventListener('change', function (e) { readText(e.target.files[0]); e.target.value = ''; });
