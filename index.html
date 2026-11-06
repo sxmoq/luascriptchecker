@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LuaScriptFucker</title>
+<title>LuaScriptFucker: Roblox script scanner</title>
 <meta name="description" content="Is this Roblox script safe? Paste a script or a link. It reads the script, follows what it downloads and tells you what it really does. Runs in your browser.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2314171f'/%3E%3Cpath d='M10 11l-4.5 5 4.5 5M22 11l4.5 5-4.5 5M18 9l-4 14' stroke='white' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -59,12 +59,21 @@
       <button class="chip-btn" data-ex="stealer" type="button">Stealer</button>
       <button class="chip-btn" data-ex="hidden" type="button">Hidden stealer</button>
       <button class="chip-btn" data-ex="luarmor" type="button">Luarmor loader</button>
+      <button class="chip-btn" data-ex="cookie" type="button">Cookie logger</button>
+      <button class="chip-btn" data-ex="fake" type="button">Fake Robux link</button>
+      <button class="chip-btn" data-ex="installer" type="button">Installer</button>
     </div>
 
     <p id="msg" class="msg" role="status"></p>
 
     <section class="view" id="v-dump">
       <div id="dumpOut"></div>
+      <div class="catches" id="catches">
+        <div><b>Item stealers</b><span>Scripts that gift, trade or mail your items to someone else.</span></div>
+        <div><b>Cookie and token loggers</b><span>Roblox cookies, Discord tokens and saved browser logins.</span></div>
+        <div><b>Fake Robux and group scams</b><span>Lookalike Roblox links, free Robux bait and group payout pages.</span></div>
+        <div><b>Malware installers</b><span>Downloads of .exe files, Windows commands and hidden loaders.</span></div>
+      </div>
     </section>
 
     <section class="view" id="v-clean" hidden>

